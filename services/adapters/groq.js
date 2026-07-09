@@ -1,13 +1,19 @@
+// services/adapters/groq.js
 import SYSTEM_PROMPT from '../../prompt.js';
+import { chatCompletionsRequest } from '../ai/httpChatClient.js';
+
 export async function callGroq(apiKey, model, history, systemExtra = '') {
   if (!apiKey) throw new Error('Groq: sin API Key');
   const system = systemExtra ? `${SYSTEM_PROMPT}\n\n${systemExtra}` : SYSTEM_PROMPT;
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model, max_tokens: 500, messages: [{ role: 'system', content: system }, ...history] }),
+
+  const { text, tokens } = await chatCompletionsRequest({
+    url: 'https://api.groq.com/openai/v1/chat/completions',
+    apiKey,
+    model,
+    messages: [{ role: 'system', content: system }, ...history],
   });
-  const d = await res.json();
-  if (d.error) throw new Error(d.error.message);
-  return { text: d.choices?.[0]?.message?.content || '', tokens: d.usage?.total_tokens || 0 };
+
+  return { text, tokens };
 }
+
+export default callGroq;

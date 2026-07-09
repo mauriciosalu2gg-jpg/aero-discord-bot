@@ -1,58 +1,46 @@
-import "dotenv/config";
+// secrets.js
+// Cada proveedor tiene su propia API Key independiente en el .env.
+// Cambiar de proveedor o rotar una key es solo editar el .env: no hay
+// que tocar código en ningún archivo.
+// La prioridad, escalera de modelos, cooldowns, etc. viven en config/providers.js.
+import 'dotenv/config';
+import { PROVIDER_PRIORITY, getModelLadder } from './config/providers.js';
 
 const SECRETS = {
-  discordToken: process.env.DISCORD_TOKEN || "",
+  discordToken: process.env.DISCORD_TOKEN || '',
 
   providers: {
-    anthropic: {
-      apiKey: process.env.ANTHROPIC_API_KEY || "",
-      models: {
-        bajo: "claude-haiku-4-5-20251001",
-        medio: "claude-sonnet-5",
-      },
-      openai: {
-        apiKey: process.env.OPENAI_API_KEY || "",
-        models: {
-          bajo: "gpt-oss-120b",
-          medio: "gpt-oss-120b",
-        },
-      },
-    groq: {
-      apiKey: process.env.GROQ_API_KEY || "",
-      models: {
-        bajo: "llama-3.1-8b-instant",
-        medio: "llama-3.3-70b-versatile",
-      },
-    },
-    gemini: {
-      apiKey: process.env.GEMINI_API_KEY || "",
-      models: {
-        bajo: "gemini-2.0-flash-lite",
-        medio: "gemini-2.0-flash",
-      },
-    },
+    gemini: { apiKey: process.env.GEMINI_API_KEY || '' },
+    groq: { apiKey: process.env.GROQ_API_KEY || '' },
+    openai: { apiKey: process.env.OPENAI_API_KEY || '' },
+    anthropic: { apiKey: process.env.ANTHROPIC_API_KEY || '' },
+    cerebras: { apiKey: process.env.CEREBRAS_API_KEY || '' },
+    openrouter: { apiKey: process.env.OPENROUTER_API_KEY || '' },
+    huggingface: { apiKey: process.env.HUGGINGFACE_API_KEY || '' },
   },
 };
 
+export { PROVIDER_PRIORITY };
+
 /**
- * Retorna todos los proveedores configurados y disponibles en orden de prioridad.
- * @returns {Array} Lista de proveedores activos con sus credenciales y modelos
+ * Retorna todos los proveedores con API Key configurada, en el orden de
+ * PROVIDER_PRIORITY (config/providers.js), cada uno con su escalera de
+ * modelos ya resuelta.
+ * @returns {Array<{name: string, apiKey: string, models: string[]}>}
  */
 function getAvailableProviders() {
-  const orden = ["gemini", "openai", "groq", "anthropic"]; // Prioridad del administrador
   const activos = [];
-  
-  for (const name of orden) {
+  for (const name of PROVIDER_PRIORITY) {
     const data = SECRETS.providers[name];
-    if (data.apiKey && data.apiKey.trim() !== "") {
-      activos.push({ name, ...data });
+    if (data && data.apiKey && data.apiKey.trim() !== '') {
+      activos.push({ name, apiKey: data.apiKey, models: getModelLadder(name) });
     }
   }
   return activos;
 }
 
 /**
- * Retorna el primer proveedor de IA que esté activo (legacy support).
+ * Primer proveedor disponible según la prioridad configurada (legacy support).
  */
 function getActiveProvider() {
   const activos = getAvailableProviders();
@@ -67,4 +55,5 @@ export default {
   getAvailableProviders,
   getActiveProvider,
   getDiscordToken,
+  PROVIDER_PRIORITY,
 };

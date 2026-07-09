@@ -14,6 +14,7 @@ import { splitHumanized } from './core/messageSplitter.js';
 import { pickMuletilla, emojiForMood } from './core/personality.js';
 import { webSearch, needsWebSearch } from './core/webSearch.js';
 import { handleCommand } from './commands/reset.js';
+import { handleCommand as handleProviderCommand } from './commands/provider.js';
 
 const PORT = process.env.PORT || 3000;
 const startTime = Date.now();
@@ -71,6 +72,13 @@ client.on('messageCreate', async (message) => {
     return false;
   });
   if (wasCommand) return;
+
+  // Comando de estado del orquestador de IA (!provider / !status), abierto a todos.
+  const wasProviderCommand = await handleProviderCommand(message).catch(err => {
+    console.error('[command]', err.message);
+    return false;
+  });
+  if (wasProviderCommand) return;
 
   const channelId = message.channelId;
 
