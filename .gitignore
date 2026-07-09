@@ -1,0 +1,6 @@
+node_modules/
+.env
+data/guilds.json
+database/serviceAccountKey.json
+*.log
+.DS_Store
