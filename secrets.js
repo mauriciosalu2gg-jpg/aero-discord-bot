@@ -10,14 +10,13 @@ const SECRETS = {
         bajo: "claude-haiku-4-5-20251001",
         medio: "claude-sonnet-5",
       },
-    },
-    openai: {
-      apiKey: process.env.OPENAI_API_KEY || "",
-      models: {
-        bajo: "gpt-4.1-mini",
-        medio: "gpt-4.1",
+      openai: {
+        apiKey: process.env.OPENAI_API_KEY || "",
+        models: {
+          bajo: "gpt-oss-120b",
+          medio: "gpt-oss-120b",
+        },
       },
-    },
     groq: {
       apiKey: process.env.GROQ_API_KEY || "",
       models: {
@@ -40,7 +39,7 @@ const SECRETS = {
  * @returns {Array} Lista de proveedores activos con sus credenciales y modelos
  */
 function getAvailableProviders() {
-  const orden = ["gemini", "groq", "openai", "anthropic"]; // Prioridad del administrador
+  const orden = ["gemini", "openai", "groq", "anthropic"]; // Prioridad del administrador
   const activos = [];
   
   for (const name of orden) {
