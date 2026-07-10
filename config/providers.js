@@ -92,6 +92,21 @@ export function getModelLadder(providerName) {
   return MODEL_LADDERS[providerName] || [];
 }
 
+/**
+ * Un modelo se considera "basico" (poco potente) si es el ultimo de su
+ * escalera, o si su nombre trae pistas tipicas de gama baja (lite/mini/
+ * instant/8b/flash-lite/haiku). Se usa para decidir si conviene mandarle
+ * un contexto mega resumido en vez del historial completo, mientras los
+ * modelos mejores se recuperan de cooldown.
+ */
+export function isBasicModel(providerName, model) {
+  if (!model) return true;
+  const ladder = getModelLadder(providerName);
+  const isLastOfLadder = ladder.length > 0 && model === ladder[ladder.length - 1];
+  const lowTierHints = /lite|mini|instant|8b|haiku|small|nano/i.test(model);
+  return isLastOfLadder || lowTierHints;
+}
+
 export default {
   PROVIDER_PRIORITY,
   MODEL_LADDERS,

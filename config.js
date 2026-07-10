@@ -113,9 +113,27 @@ export async function updateBotStatus(client, activeModelInfo = {}) {
   }
 }
 
+/**
+ * Lee el total de tokens gastados por un servidor (Firestore o local).
+ */
+export async function getTokenUsage(guildId) {
+  if (db) {
+    try {
+      const doc = await db.collection('guilds').doc(guildId).get();
+      if (doc.exists) return doc.data().tokensUsedTotal || 0;
+      return 0;
+    } catch (err) {
+      console.error('[config/Firestore] Error al leer tokens:', err);
+    }
+  }
+  const guilds = loadGuildsLocal();
+  return guilds[guildId]?.tokensUsedTotal || 0;
+}
+
 export default {
   registerGuild,
   addTokenUsage,
   updateBotStatus,
+  getTokenUsage,
   detectProvider: secrets.getActiveProvider,
 };

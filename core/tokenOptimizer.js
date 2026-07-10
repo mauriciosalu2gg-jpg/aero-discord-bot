@@ -41,4 +41,35 @@ export function summarizeOld(history, keepRecent = KEEP_RECENT) {
   return { summary, recent };
 }
 
-export default { estimateTokens, trimHistory, summarizeOld };
+/**
+ * Version mega compacta del historial para cuando estamos corriendo en un
+ * modelo "basico" (ultimo escalon de la escalera, ej. gemini-flash-lite,
+ * llama-8b-instant, gpt-4o-mini, claude-haiku). En vez de mandar el
+ * historial completo, arma una idea general bien resumida (quien dijo que,
+ * en pocas palabras) + los ultimos 2-3 mensajes tal cual, para que el
+ * modelo debil pueda seguir dando respuestas coherentes con poco contexto
+ * mientras los proveedores mejores se recuperan del cooldown.
+ */
+export function buildUltraCompactContext(history) {
+  if (!history.length) return { compactSummary: '', recent: [] };
+
+  const recent = history.slice(-3);
+  const older = history.slice(0, -3);
+
+  if (!older.length) return { compactSummary: '', recent };
+
+  // Idea general bien resumida, una linea por autor relevante, recortada
+  // fuerte para gastar el minimo de tokens posible.
+  const bullets = older
+    .filter(h => h.role === 'user')
+    .slice(-8)
+    .map(h => `${h.authorName || 'alguien'}: ${(h.content || '').slice(0, 40)}`);
+
+  const compactSummary = bullets.length
+    ? `idea general de la charla hasta ahora (resumen minimo, modelo con poca capacidad): ${bullets.join(' / ')}`
+    : '';
+
+  return { compactSummary, recent };
+}
+
+export default { estimateTokens, trimHistory, summarizeOld, buildUltraCompactContext };

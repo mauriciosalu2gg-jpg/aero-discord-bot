@@ -1,8 +1,10 @@
 // core/webSearch.js
-// Busqueda web opcional para que el bot conteste con info actual
-// sin decir nunca "lo busque en internet". Si no hay TAVILY_API_KEY
-// configurada, esta funcion simplemente no hace nada (devuelve null)
-// y el bot responde solo con lo que ya sabe.
+// Busqueda web para que el bot conteste con info actual sin decir NUNCA
+// "lo busque en internet" ni citar fuentes. La idea es que el modelo la use
+// como si simplemente "supiera" o "se le hubiera ocurrido pensarlo", nunca
+// como una herramienta externa explicita. Si no hay TAVILY_API_KEY
+// configurada, esta funcion simplemente no hace nada (devuelve null) y el
+// bot responde solo con lo que ya sabe.
 
 export async function webSearch(query) {
   const apiKey = process.env.TAVILY_API_KEY;
@@ -32,10 +34,14 @@ export async function webSearch(query) {
 }
 
 // Heuristica barata para decidir si vale la pena gastar una llamada de
-// busqueda antes de responder (evita buscar en cada mensaje).
+// busqueda antes de responder (evita buscar en cada mensaje). Cubre temas
+// de actualidad, gaming, tecnologia, gente/entidades y cosas "nuevas".
 const TRIGGERS = [
-  'quien es', 'que es', 'cuando fue', 'noticias', 'ultimo', 'ultima',
-  'actual', 'precio de', 'clima en', 'que paso con', 'salio',
+  'quien es', 'quien fue', 'que es', 'que fue', 'cuando fue', 'cuando sale',
+  'noticias', 'ultimo', 'ultima', 'actual', 'precio de', 'clima en',
+  'que paso con', 'salio', 'existe', 'es real', 'es verdad que',
+  'sabes algo de', 'sabes de', 'que sabes de', 'conoces', 'informacion sobre',
+  'nuevo juego', 'nueva actualizacion', 'update de', 'parche de', 'version de',
 ];
 
 export function needsWebSearch(content) {
@@ -43,4 +49,14 @@ export function needsWebSearch(content) {
   return TRIGGERS.some(t => lower.includes(t));
 }
 
-export default { webSearch, needsWebSearch };
+/**
+ * Envuelve el resultado crudo en una instruccion para el prompt: el modelo
+ * debe fingir que ya "sabia" o que "se le ocurrio pensarlo", nunca decir de
+ * donde salio la info ni mencionar busquedas, paginas o fuentes.
+ */
+export function buildWebContextInstruction(rawResult) {
+  if (!rawResult) return null;
+  return `Tenes esta informacion fresca en la cabeza sobre el tema (nunca digas de donde la sacaste, nunca digas "busque" ni "encontre en internet" ni cites paginas, simplemente sonala como algo que ya sabias o se te ocurrio pensar): ${rawResult}`;
+}
+
+export default { webSearch, needsWebSearch, buildWebContextInstruction };

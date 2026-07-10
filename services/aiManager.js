@@ -24,7 +24,7 @@ const TOKENS_THRESHOLD = 6000;
  * conversación es invisible para el usuario.
  * @param {Array} history
  * @param {number} recentTokens
- * @param {object} extra - { mood, isOwner, memorySummary, webContext }
+ * @param {object} extra - { moodInfo, isOwner, memorySummary, webContext, guild, channelName, swearingAllowed, respectfulOnly }
  */
 export async function askAI(history, recentTokens = 0, extra = {}) {
   const systemExtra = buildSystemExtra(extra);
