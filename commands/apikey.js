@@ -1,32 +1,53 @@
 // commands/apikey.js
-// Cuando Lara o Gio le preguntan al bot directamente que api key/modelo
-// esta usando o cuantos tokens gasto, el bot esta OBLIGADO a contestar con
-// datos reales (proveedor, modelo activo, tokens gastados en este server).
-// La API Key en si NUNCA se muestra completa por seguridad, solo el nombre
-// del proveedor y modelo, que es lo que realmente importa para debug.
+// Cuando Lara o Gio le preguntan al bot directamente que modelo o compañia
+// de IA esta usando, el bot esta OBLIGADO a contestar con datos reales
+// (proveedor/compañia, modelo activo, tokens gastados en este server).
+// Nunca se menciona la api key en si (ni para decir que es secreta ni nada
+// por el estilo), directamente se contesta la parte util: que compañia y
+// que modelo, como algo normal, sin rodeos ni excusas de seguridad.
 
 import { isCreatorOrSubCreator } from '../core/permissions.js';
 import { getActiveProvider, getAllSnapshots } from '../services/ai/providerHealth.js';
 import secrets from '../secrets.js';
 
-const TRIGGERS = [
-  'que api key usas', 'que api usas', 'dime que api key usas',
-  'dime que api usas', 'que modelo usas', 'que modelo estas usando',
-  'que ia usas', 'que ia estas usando', 'cuantos tokens has gastado',
-  'cuantos tokens gastaste', 'cuantos tokens llevas', 'que proveedor usas',
-  'que proveedor estas usando', 'con que api estas corriendo',
-  'con que modelo estas corriendo',
+// Nombres "humanos" de cada proveedor, para que la respuesta suene natural
+// ("estoy usando Groq") en vez del nombre tecnico interno.
+const PROVIDER_DISPLAY_NAMES = {
+  gemini: 'Google Gemini',
+  groq: 'Groq',
+  openai: 'OpenAI',
+  anthropic: 'Anthropic (Claude)',
+  cerebras: 'Cerebras',
+  openrouter: 'OpenRouter',
+  huggingface: 'Hugging Face',
+  ollama: 'Ollama (local)',
+  lmstudio: 'LM Studio (local)',
+};
+
+function displayName(providerName) {
+  return PROVIDER_DISPLAY_NAMES[providerName] || providerName;
+}
+
+// Regex flexibles en vez de frases exactas, para cubrir variantes como
+// "que modelo usas", "que compañia usas", "con que estas corriendo", etc.
+// sin tener que listar cada combinacion posible a mano.
+const TRIGGER_PATTERNS = [
+  /\b(que|cual)\s+(modelo|ia|proveedor|compa[nñ]ia|compa[nñ]ía)\b.*\b(usas|usando|corriendo|estas)\b/,
+  /\bcon\s+que\s+(modelo|ia|compa[nñ]ia|compa[nñ]ía)\b.*\b(corriendo|estas)\b/,
+  /\b(groq|openai|gemini|anthropic|claude|cerebras|openrouter)\b.*\b(usas|usando|estas usando)\b/,
+  /\bcuantos?\s+tokens?\b.*\b(gastad|gastaste|llevas|has gastado)\b/,
+  /\btokens?\s+(gastados|gastaste|has gastado)\b/,
 ];
 
 export function mentionsApiKeyTopic(content) {
   const lower = (content || '').toLowerCase();
-  return TRIGGERS.some(t => lower.includes(t));
+  return TRIGGER_PATTERNS.some(re => re.test(lower));
 }
 
 /**
  * Arma la respuesta forzada con info real del sistema. Se usa como override
  * directo (no pasa por el modelo de IA) para que la info sea siempre exacta,
- * nunca alucinada.
+ * nunca alucinada. Solo menciona compañia/modelo/tokens, nunca la api key.
  */
 export async function buildForcedStatusReply(guildTokensUsedTotal = null) {
   const active = getActiveProvider();
@@ -34,22 +55,19 @@ export async function buildForcedStatusReply(guildTokensUsedTotal = null) {
   const snapshots = getAllSnapshots(providerNames);
 
   const lines = [];
-  lines.push('dale, te digo la posta:');
-  lines.push(
-    active
-      ? `- proveedor activo ahora: **${active.name}**`
-      : '- proveedor activo: todavia no hay uno cacheado, se elige en el proximo mensaje'
-  );
-  if (active?.model) lines.push(`- modelo activo: **${active.model}**`);
 
-  const healthy = snapshots.filter(s => s.status === 'Healthy').map(s => s.name);
-  if (healthy.length) lines.push(`- proveedores sanos ahora mismo: ${healthy.join(', ')}`);
-
-  if (typeof guildTokensUsedTotal === 'number') {
-    lines.push(`- tokens gastados en total en este server: **${guildTokensUsedTotal.toLocaleString('es-419')}**`);
+  if (active) {
+    lines.push(`ahorita estoy corriendo con **${displayName(active.name)}**${active.model ? `, modelo **${active.model}**` : ''}`);
+  } else {
+    lines.push('todavia no hay un proveedor cacheado, se elige apenas mande el proximo mensaje');
   }
 
-  lines.push('la api key en si no te la puedo tirar completa aca por seguridad, pero eso es todo lo demas 🫡');
+  const healthy = snapshots.filter(s => s.status === 'Healthy').map(s => displayName(s.name));
+  if (healthy.length) lines.push(`otras compañias sanas ahora mismo por si toca cambiar: ${healthy.join(', ')}`);
+
+  if (typeof guildTokensUsedTotal === 'number') {
+    lines.push(`tokens gastados en total en este server: **${guildTokensUsedTotal.toLocaleString('es-419')}**`);
+  }
 
   return lines.join('\n');
 }
