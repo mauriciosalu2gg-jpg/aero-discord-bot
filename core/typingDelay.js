@@ -6,7 +6,7 @@
 // persona real que no esta pegada al celular) y tarda varios minutos en
 // contestar, hasta un maximo de 12 minutos. Nunca es fijo ni predecible.
 
-const MAX_DELAY_MS = 12 * 60 * 1000; // 12 minutos, techo absoluto
+const MAX_DELAY_MS = 6 * 60 * 1000; // 6 minutos, techo absoluto
 const LONG_DELAY_CHANCE = 0.12; // ~12% de las veces tarda "minutos" en responder
 
 /**
@@ -52,13 +52,15 @@ export function computeThinkingDelay({ responseText = '', moodInfo = {}, incomin
   //    probabilidad/duracion, ya que "tiene mas para pensar/escribir".
   const longChance = LONG_DELAY_CHANCE + Math.min(responseText.length / 4000, 0.08);
   if (Math.random() < longChance) {
-    // Entre ~1 minuto y 12 minutos, con distribucion que favorece los
-    // valores mas bajos del rango (tardanzas de minutos son mas comunes
-    // que las de 10-12 min, que quedan como el extremo raro).
-    const minMs = 60_000;
-    const spread = MAX_DELAY_MS - minMs;
-    const skewed = Math.pow(Math.random(), 1.8); // sesga hacia valores chicos
-    const longDelay = minMs + skewed * spread;
+// Delay largo: esperamos en silencio la mayor parte del tiempo, y recien
+  // en los ultimos segundos prendemos el indicador de "escribiendo...".
+  // Entre ~1 minuto y 6 minutos, con distribucion que favorece los
+  // valores mas bajos del rango (tardanzas de minutos son mas comunes
+  // que las de 5-6 min, que quedan como el extremo raro).
+  const minMs = 60_000;
+  const spread = MAX_DELAY_MS - minMs;
+  const skewed = Math.pow(Math.random(), 1.8); // sesga hacia valores chicos
+  const longDelay = minMs + skewed * spread;
     return Math.min(longDelay, MAX_DELAY_MS);
   }
 
