@@ -1,6 +1,6 @@
 // services/ai/panelConfig.js
-// Config dinámica publicada por el panel web (Firestore config/ai), con
-// refresco periódico. Aislado del resto de aiManager para mantener
+// Config dinamica publicada por el panel web (Firestore config/ai), con
+// refresco periodico. Aislado del resto de aiManager para mantener
 // responsabilidades separadas.
 let _cache = null;
 

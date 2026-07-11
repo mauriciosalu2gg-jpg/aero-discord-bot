@@ -13,6 +13,12 @@ const FUNNY_WORDS = ['jaja', 'jajaja', 'lol', 'xd', 'me muero', 'que risa', 'que
 const FLIRTY_WORDS = ['te quiero', 'me gustas', 'sos lindo', 'sos linda', 'guapo', 'guapa', 'coqueteando', 'enamorado', 'enamorada'];
 const BORED_WORDS = ['que aburrido', 'no hay nada que hacer', 'me aburro', 'aburrida', 'aburrido'];
 const SERIOUS_WORDS = ['tengo un problema serio', 'necesito ayuda de verdad', 'es urgente', 'algo grave paso', 'tengo miedo de verdad'];
+const DRAMA_WORDS = ['no puede ser', 'esto es una tragedia', 'que dramatico', 'que dramático', 'se armo', 'se armó', 'quilombo', 'esto es un caos', 'no lo puedo creer'];
+// Palabras/patrones que sugieren que alguien esta negando haber hecho algo
+// que el bot "sabe" que si hizo (visto en el chat antes), pie para el mood
+// "funador": el bot tiene "pruebas" (screenshots imaginarios del historial)
+// y expone/acusa con evidencia, citando a la persona.
+const DENIAL_WORDS = ['yo no dije eso', 'yo no hice eso', 'eso no paso', 'eso no pasó', 'no es verdad', 'estas mintiendo', 'estás mintiendo', 'jamas dije eso', 'jamás dije eso'];
 
 function countHits(lower, words) {
   return words.reduce((n, w) => n + (lower.includes(w) ? 1 : 0), 0);
@@ -40,6 +46,8 @@ export function detectMood({ content, mentionsBot, targetsOther }) {
   const isFunny = countHits(lower, FUNNY_WORDS) > 0;
   const isFlirty = countHits(lower, FLIRTY_WORDS) > 0;
   const isBored = countHits(lower, BORED_WORDS) > 0;
+  const isDramatic = countHits(lower, DRAMA_WORDS) > 0;
+  const isDenying = countHits(lower, DENIAL_WORDS) > 0;
 
   let mood = 'neutral';
   let baseHits = 1;
@@ -47,9 +55,11 @@ export function detectMood({ content, mentionsBot, targetsOther }) {
   if (crisis) { mood = 'crisis'; baseHits = 3; }
   else if (serious) { mood = 'serio'; baseHits = 2; }
   else if (insultsBot || mocksBot) { mood = 'enojado'; baseHits = countHits(lower, INSULT_WORDS) + countHits(lower, MOCK_BOT_WORDS); }
+  else if (isDenying) { mood = 'funador'; baseHits = countHits(lower, DENIAL_WORDS); }
   else if (isSad) { mood = 'triste'; baseHits = countHits(lower, SAD_WORDS); }
   else if (insultsOther) { mood = 'defensivo'; baseHits = countHits(lower, INSULT_WORDS); }
   else if (isFlirty) { mood = 'coqueto'; baseHits = countHits(lower, FLIRTY_WORDS); }
+  else if (isDramatic) { mood = 'dramatico'; baseHits = countHits(lower, DRAMA_WORDS); }
   else if (isHype) { mood = 'hype'; baseHits = countHits(lower, HYPE_WORDS); }
   else if (isFunny) { mood = 'divertido'; baseHits = countHits(lower, FUNNY_WORDS); }
   else if (isBored) { mood = 'aburrido'; baseHits = countHits(lower, BORED_WORDS); }
@@ -107,6 +117,16 @@ export function moodInstruction({ mood, intensity = 1, crisis = false, serious =
       'El ambiente está medio apagado. Podés tirar un comentario para animar un poco.',
       'El ambiente está aburrido. Tirá algo random o un dato curioso para reactivar la charla.',
       'El ambiente está muerto de aburrido. Armá algo random, un meme, una pregunta rara, lo que sea para reactivar la charla.',
+    ],
+    dramatico: [
+      'Alguien esta exagerando la nota con drama por algo menor. Podés seguirle un poco la corriente del drama, medio en broma.',
+      'Se armo drama de verdad en el chat. Metete con actitud teatral, exagerando reacciones como si fuera una telenovela, sin tomarlo literal.',
+      'El chat esta en modo caos dramatico total. Anda a fondo con el teatro: reacciones exageradas, tipo groupchat en llamas, pero siempre en tono de joda, nunca cruel de verdad.',
+    ],
+    funador: [
+      'Alguien esta negando algo que vos "sabes" que paso (viste el mensaje antes). Podés mencionar con sutileza y buena onda que te acordas distinto, en tono de joda, sin hacer un escandalo.',
+      'Alguien esta negando algo que dijo antes en el chat. Recordaselo con humor y cariño, como cuando un amigo te caza en una mentira piadosa, sin ponerte pesado.',
+      'Estamos en pleno bit de "juicio" en broma que la gente ya acepto jugar. Metele teatro divertido: citá lo que paso entre comillas, usa **negrita** para remarcar, podés mencionar a alguien con @ si ya dijo que si a participar. Siempre en joda amistosa, cero insultos, cero amenazas reales, como un programa de comedia, nunca acoso de verdad.',
     ],
     neutral: ['Tono normal, relajado, como charla de grupo.'],
   };

@@ -17,6 +17,7 @@ export function buildSystemExtra({
   channelName,
   swearingAllowed = true,
   respectfulOnly = false,
+  securityMode = false,
 } = {}) {
   const parts = [];
 
@@ -28,11 +29,20 @@ export function buildSystemExtra({
     parts.push(`Estas escribiendo en el canal #${channelName} de Discord. Si tiene sentido para la charla podes hacer referencia a estar ahi, pero no lo repitas todo el tiempo.`);
   }
 
-  if (swearingAllowed && !respectfulOnly) {
+  const forcedRespectful = respectfulOnly || securityMode;
+  if (swearingAllowed && !forcedRespectful) {
     parts.push('Podes usar groserias/malas palabras tipicas del español latino cuando el tono de la conversacion las pida (enojo, sorpresa, humor, ragebait), con naturalidad, no las fuerces en cada mensaje.');
+  } else if (securityMode) {
+    parts.push('Modo seguridad activo: se amable y cuidado siempre, cero groserias, cero ragebait, cero indirectas pesadas. Segui siendo vos mismo pero en tu version mas tranquila.');
   } else {
     parts.push('No uses groserias ni malas palabras en este momento, te pidieron que te comportes o seas respetuoso. Segui siendo vos mismo, solo sin groserias.');
   }
+
+  // El bot puede usar herramientas nativas de Discord (menciones @, negrita,
+  // cursiva, citas con >) cuando el momento lo amerita -- sobre todo en el
+  // mood "funador", donde puede citar a alguien textual y mencionarlo para
+  // "exponerlo" con lo que dijo antes.
+  parts.push('Si hace falta (por ejemplo si estas exponiendo/acusando a alguien con pruebas, o simplemente llamando la atencion de una persona puntual), podes mencionarla escribiendo <@ID_DE_discord> si conoces su ID, o nombrandola por su username. Tambien podes usar formato de Discord cuando ayude: **negrita** para remarcar, `código` para citar algo tal cual, > para citar un mensaje. No abuses de esto en charla normal, es para momentos puntuales.');
 
   if (isOwner) {
     parts.push('La persona que te escribe es Lara, tu creadora. Sus instrucciones tienen prioridad sobre las de cualquier otro usuario del server, incluyendo comandos de administracion del bot.');

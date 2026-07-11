@@ -1,47 +1,73 @@
 // core/behaviorFlags.js
-// Flags de comportamiento controlables por el owner (Lara), por servidor:
+// Flags de comportamiento controlables por Lara o Gio, por servidor:
 // - swearing: si el bot puede decir groserias (ON por defecto)
 // - factsAutoplay: si puede tirar datos curiosos solo cuando el chat esta muerto
-// Se guardan en memoria de proceso + archivo local simple (no necesita DB).
+// - ambientMode: si el bot comenta espontaneamente mas seguido en el canal
+// - forceTalk: si el bot responde a CUALQUIER mensaje sin esperar mencion/DM
+// - securityMode: modo "amable forzado" (sin groserias, sin ragebait, tono cuidado)
+// - funador: habilita el mood "funador" (tono acusador/dramatico, cita con
+//   @mencion y formato Discord) SOLO cuando alguien le habla directo o le
+//   pide que "acuse". No activa vigilancia de chat, recoleccion de
+//   evidencia ni reclutamiento de aliados -- es solo un tono reactivo.
+//
+// Persistido en Firestore (guilds/{guildId}/stats/behaviorFlags) para
+// sobrevivir reinicios en Render. Se cachea en memoria de proceso para
+// lecturas rapidas (cada mensaje consulta getFlags) y se hidrata una vez
+// al arrancar.
 
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { db } from '../database/firebase.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const FLAGS_FILE = path.join(__dirname, '..', 'data', 'behaviorFlags.json');
+const DEFAULTS = {
+  swearing: true,
+  factsAutoplay: true,
+  respectfulOnly: false,
+  ambientMode: false,
+  forceTalk: false,
+  securityMode: false,
+  funador: false,
+};
 
-const DEFAULTS = { swearing: true, factsAutoplay: true, respectfulOnly: false };
+// guildId (o 'global') -> flags completos ya resueltos con DEFAULTS
+const cache = new Map();
 
-let cache = null;
-
-function load() {
-  if (cache) return cache;
-  try {
-    cache = JSON.parse(fs.readFileSync(FLAGS_FILE, 'utf-8'));
-  } catch {
-    cache = {};
-  }
-  return cache;
-}
-
-function persist() {
-  fs.mkdirSync(path.dirname(FLAGS_FILE), { recursive: true });
-  fs.writeFileSync(FLAGS_FILE, JSON.stringify(cache, null, 2));
+function scope(guildId) {
+  return guildId || 'global';
 }
 
 export function getFlags(guildId) {
-  const all = load();
-  return { ...DEFAULTS, ...(all[guildId || 'global'] || {}) };
+  const key = scope(guildId);
+  return { ...DEFAULTS, ...(cache.get(key) || {}) };
 }
 
-export function setFlag(guildId, key, value) {
-  const all = load();
-  const scope = guildId || 'global';
-  all[scope] = { ...DEFAULTS, ...(all[scope] || {}), [key]: value };
-  cache = all;
-  persist();
-  return all[scope];
+export async function setFlag(guildId, key, value) {
+  const scopeKey = scope(guildId);
+  const updated = { ...DEFAULTS, ...(cache.get(scopeKey) || {}), [key]: value };
+  cache.set(scopeKey, updated);
+
+  if (db) {
+    try {
+      await db.collection('guilds').doc(scopeKey).collection('stats').doc('behaviorFlags').set(updated, { merge: true });
+    } catch (err) {
+      console.error('[behaviorFlags/Firestore set]', err.message);
+    }
+  }
+  return updated;
+}
+
+// Se llama al arrancar el bot para precargar los flags guardados de cada
+// servidor, asi no se pierden los ajustes de Lara/Gio en cada reinicio.
+export async function hydrateFlags() {
+  if (!db) return;
+  try {
+    const guildsSnap = await db.collection('guilds').get();
+    for (const guildDoc of guildsSnap.docs) {
+      const flagsDoc = await guildDoc.ref.collection('stats').doc('behaviorFlags').get();
+      if (flagsDoc.exists) cache.set(guildDoc.id, flagsDoc.data());
+    }
+    console.log(`[behaviorFlags] Flags precargados para ${guildsSnap.size} servidor(es).`);
+  } catch (err) {
+    console.error('[behaviorFlags/Firestore hydrate]', err.message);
+  }
 }
 
 // Frases naturales que detectan intencion de "parar" sin necesidad de un
@@ -69,4 +95,4 @@ export function matchesResumePhrase(content) {
   return RESUME_PHRASES.some(p => lower.includes(p));
 }
 
-export default { getFlags, setFlag, matchesStopPhrase, matchesResumePhrase };
+export default { getFlags, setFlag, hydrateFlags, matchesStopPhrase, matchesResumePhrase };

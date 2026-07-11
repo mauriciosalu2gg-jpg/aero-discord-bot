@@ -14,11 +14,10 @@ import { splitHumanized, delayBetweenParts } from './core/messageSplitter.js';
 import { pickMuletilla } from './core/personality.js';
 import { webSearch, needsWebSearch } from './core/webSearch.js';
 import { computeThinkingDelay, humanizedTyping } from './core/typingDelay.js';
-import { getFlags, matchesStopPhrase, matchesResumePhrase, setFlag } from './core/behaviorFlags.js';
+import { getFlags, matchesStopPhrase, matchesResumePhrase, setFlag, hydrateFlags } from './core/behaviorFlags.js';
 import { markActivity, startIdleWatcher } from './core/idleFacts.js';
-import { handleCommand } from './commands/reset.js';
-import { handleCommand as handleProviderCommand } from './commands/provider.js';
-import { handleCommand as handleBehaviorCommand } from './commands/behavior.js';
+import { isModerationActive, messageViolatesRespect, registerViolationAndGetSanction, hydrateModerationFlags, hydrateStrikes } from './core/moderationEngine.js';
+import { handleInteraction } from './interactions/interactionCreate.js';
 import { handleApiKeyQuestion } from './commands/apikey.js';
 import { getActiveProvider } from './services/ai/providerHealth.js';
 import { isBasicModel } from './config/providers.js';
@@ -32,7 +31,12 @@ let lastAIResponse = { provider: 'ninguno', model: 'ninguno' };
 const trackedChannels = new Map(); // channelId -> { guildId }
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildModeration,
+  ],
   partials: [Partials.Channel],
 });
 
@@ -55,12 +59,19 @@ http.createServer((req, res) => {
   res.end('OK');
 }).listen(PORT, () => console.log(`[http] Keepalive en puerto ${PORT}`));
 
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log(`[discord] Conectado como ${client.user.tag}`);
   client.guilds.cache.forEach(g => config.registerGuild(g));
   startConfigRefresh(5);
   config.updateBotStatus(client, lastAIResponse);
   setInterval(() => config.updateBotStatus(client, lastAIResponse), 30000);
+
+  // Precarga desde Firestore los flags de comportamiento y el estado de
+  // moderacion/strikes de cada servidor, para no perder configuracion en
+  // cada reinicio/redeploy de Render.
+  await hydrateFlags().catch(err => console.error('[hydrate/flags]', err.message));
+  await hydrateModerationFlags().catch(err => console.error('[hydrate/moderation]', err.message));
+  await hydrateStrikes().catch(err => console.error('[hydrate/strikes]', err.message));
 
   // Watcher de inactividad: si un canal lleva 6+ horas sin actividad y no
   // esta "calladito", el bot tira un dato curioso por su cuenta.
@@ -87,6 +98,50 @@ client.once('ready', () => {
 
 client.on('guildCreate', g => config.registerGuild(g));
 
+// ── Slash commands (/ambient-mode, /forcetalk, /security, /moderation, /modelstatus, /resetmemory) ──
+client.on('interactionCreate', handleInteraction);
+
+// ── Moderacion automatica: corre ANTES que cualquier otra logica, para
+//    cualquier mensaje humano, este o no el bot mencionado. ──
+async function runAutoModeration(message) {
+  const guildId = message.guild?.id;
+  if (!guildId || !isModerationActive(guildId)) return false;
+  if (!messageViolatesRespect(message.content)) return false;
+
+  const sanction = registerViolationAndGetSanction(guildId, message.author.id);
+  const member = message.member;
+
+  try {
+    switch (sanction.kind) {
+      case 'warn':
+        await message.reply(`⚠️ <@${message.author.id}> baja un cambio, eso no se dice aca. Proxima vez ya es sancion (aviso ${sanction.strikeNumber}).`);
+        break;
+      case 'timeout':
+        if (member?.moderatable) {
+          await member.timeout(sanction.durationMs, 'Moderacion automatica: falta de respeto repetida');
+        }
+        await message.reply(`🔇 <@${message.author.id}> te mande un timeout de ${sanction.label} por seguir faltando el respeto.`);
+        break;
+      case 'kick':
+        if (member?.kickable) {
+          await member.kick('Moderacion automatica: falta de respeto repetida');
+        }
+        await message.channel.send(`👢 <@${message.author.id}> fue expulsado por seguir faltando el respeto despues de varios avisos.`);
+        break;
+      case 'ban':
+        if (member?.bannable) {
+          await member.ban({ reason: 'Moderacion automatica: falta de respeto repetida (limite alcanzado)' });
+        }
+        await message.channel.send(`🔨 <@${message.author.id}> fue baneado, ya se le avisó varias veces y siguió faltando el respeto.`);
+        break;
+    }
+  } catch (err) {
+    console.error('[moderation] Error aplicando sancion:', err.message);
+  }
+
+  return true;
+}
+
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
   const isMentioned = message.mentions.has(client.user);
@@ -100,49 +155,44 @@ client.on('messageCreate', async (message) => {
   trackedChannels.set(channelId, { guildId });
   markActivity(channelId);
 
+  // Moderacion automatica: corre siempre que este activa, sin importar si
+  // le hablan al bot o no.
+  const wasSanctioned = await runAutoModeration(message).catch(err => {
+    console.error('[moderation]', err.message);
+    return false;
+  });
+  if (wasSanctioned) return;
+
   // Comandos de comportamiento (!calladito, !groserias, etc) y frases
   // naturales de "parar"/"reanudar" del owner, se detectan aunque no
   // mencionen al bot directamente.
   if (isOwner(message.author)) {
     if (matchesStopPhrase(message.content)) {
-      setFlag(guildId, 'swearing', false);
-      setFlag(guildId, 'factsAutoplay', false);
+      await setFlag(guildId, 'swearing', false);
+      await setFlag(guildId, 'factsAutoplay', false);
     } else if (matchesResumePhrase(message.content)) {
-      setFlag(guildId, 'swearing', true);
-      setFlag(guildId, 'factsAutoplay', true);
+      await setFlag(guildId, 'swearing', true);
+      await setFlag(guildId, 'factsAutoplay', true);
     }
   }
 
-  if (!isMentioned && !isDM) return;
+  const flags = getFlags(guildId);
+
+  // ambientMode/forceTalk: el bot puede responder sin que lo mencionen.
+  // forceTalk responde a TODO; ambientMode solo mete comentarios random
+  // via el watcher de inactividad ya existente (no cambia este flujo).
+  const shouldRespond = isMentioned || isDM || flags.forceTalk;
+  if (!shouldRespond) return;
 
   if (guildId) config.registerGuild(message.guild);
 
   const content = message.content.replace(/<@!?\d+>/g, '').trim();
   if (!content) return;
 
-  // Comandos privilegiados (!reset, !reset all) antes que nada.
-  const wasCommand = await handleCommand(message).catch(err => {
-    console.error('[command]', err.message);
-    return false;
-  });
-  if (wasCommand) return;
-
-  // Comando de estado del orquestador de IA (!provider / !status), abierto a todos.
-  const wasProviderCommand = await handleProviderCommand(message).catch(err => {
-    console.error('[command]', err.message);
-    return false;
-  });
-  if (wasProviderCommand) return;
-
-  // Comandos de comportamiento explicitos (!calladito, !groserias on/off, etc).
-  const wasBehaviorCommand = await handleBehaviorCommand(message).catch(err => {
-    console.error('[command]', err.message);
-    return false;
-  });
-  if (wasBehaviorCommand) return;
-
-  // Si Lara o Gio preguntan directo por api key/modelo/tokens gastados, el
-  // bot esta OBLIGADO a contestar con datos reales, sin pasar por la IA.
+  // Si Lara o Gio preguntan directo por api key/modelo/tokens gastados
+  // en texto plano (compatibilidad con el viejo estilo, ademas del slash
+  // command /modelstatus), el bot esta OBLIGADO a contestar con datos
+  // reales, sin pasar por la IA.
   const guildTokens = guildId ? await config.getTokenUsage(guildId).catch(() => null) : null;
   const wasApiKeyQuestion = await handleApiKeyQuestion(message, guildTokens).catch(err => {
     console.error('[command]', err.message);
@@ -151,8 +201,8 @@ client.on('messageCreate', async (message) => {
   if (wasApiKeyQuestion) return;
 
   try {
-    // 1. Memoria persistente del canal
-    const memory = await getMemory(channelId);
+    // 1. Memoria persistente del canal (separada por servidor, en Firestore)
+    const memory = await getMemory(channelId, guildId);
     memory.messages = memory.messages || [];
     memory.messages.push({ role: 'user', content, authorName: message.author.username });
 
@@ -161,13 +211,16 @@ client.on('messageCreate', async (message) => {
     context.isOwnerMessage = isOwner(message.author);
     const moodInfo = detectMood(context);
 
-    // 3. Resumen barato de historial viejo + recorte por tokens, para no
-    //    mandar todo el chat completo cada vez (ahorra tokens). Si el
-    //    proveedor/modelo actualmente activo es "basico" (ultimo escalon,
-    //    ej. flash-lite, 8b-instant, gpt-4o-mini, haiku), usamos un
-    //    contexto MEGA resumido para que pueda seguir dando respuestas
-    //    coherentes con lo minimo posible mientras los modelos mejores
-    //    se recuperan de su cooldown.
+    // El mood "funador" (tono acusador con formato Discord) solo se usa si
+    // el server activo lo activo explicitamente con /funador activate.
+    // Es reactivo unicamente: se dispara por lo que la persona ACABA de
+    // escribir en este mensaje, nunca por vigilancia de mensajes previos
+    // ni por iniciativa propia del bot.
+    if (moodInfo.mood === 'funador' && !flags.funador) {
+      moodInfo.mood = 'dramatico';
+    }
+
+    // 3. Resumen barato de historial viejo + recorte por tokens
     const cachedProvider = getActiveProvider();
     const usingBasicModel = cachedProvider && isBasicModel(cachedProvider.name, cachedProvider.model);
 
@@ -184,15 +237,10 @@ client.on('messageCreate', async (message) => {
     const historyBudget = usingBasicModel ? 1200 : 4000;
     const llmHistory = trimHistory(recent, historyBudget).map(h => ({ role: h.role, content: h.content }));
 
-    // 4. Busqueda web "por voluntad propia": el bot decide si le conviene
-    //    saber algo mas antes de responder, nunca lo confiesa en el mensaje.
+    // 4. Busqueda web "por voluntad propia"
     const webContext = needsWebSearch(content) ? await webSearch(content).catch(() => null) : null;
 
-    // 5. Flags de comportamiento (groserias / respeto) segun lo que haya
-    //    configurado Lara para este servidor.
-    const flags = getFlags(guildId);
-
-    // 6. Llamada a la IA con todo el contexto extra
+    // 5. Llamada a la IA con todo el contexto extra
     const response = await askAI(llmHistory, recentTokens, {
       moodInfo,
       isOwner: context.isOwnerMessage,
@@ -203,20 +251,19 @@ client.on('messageCreate', async (message) => {
       channelName: message.channel?.name,
       swearingAllowed: flags.swearing,
       respectfulOnly: flags.respectfulOnly,
+      securityMode: flags.securityMode,
     });
 
     lastAIResponse = { provider: response.provider, model: response.model };
 
-    // 7. Guardar respuesta en memoria persistente
+    // 6. Guardar respuesta en memoria persistente
     memory.messages.push({ role: 'assistant', content: response.text, authorName: client.user.username });
     while (memory.messages.length > 40) memory.messages.shift();
-    await saveMemory(channelId, memory);
+    await saveMemory(channelId, memory, guildId);
 
     if (guildId) config.addTokenUsage(guildId, response.tokens || estimateTokens(response.text));
 
-    // 8. Delay humano dinamico: NO responde siempre rapido. Depende del
-    //    largo del mensaje entrante, del mood (serio/triste tarda mas,
-    //    hype/divertido responde mas rapido) y de cuanto va a escribir.
+    // 7. Delay humano dinamico
     const thinkingMs = computeThinkingDelay({
       responseText: response.text,
       moodInfo,
@@ -224,8 +271,7 @@ client.on('messageCreate', async (message) => {
     });
     await humanizedTyping(message.channel, thinkingMs);
 
-    // 9. Fragmentar la respuesta como escribe una persona real (a veces
-    //    varios mensajes separados en vez de uno solo)
+    // 8. Fragmentar la respuesta como escribe una persona real
     const parts = splitHumanized(response.text, moodInfo);
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
