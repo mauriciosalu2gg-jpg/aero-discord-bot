@@ -33,6 +33,7 @@ const WITNESS_WINDOW_MS = 45 * 1000;        // 45s abiertos para sumarse como te
 const ANSWER_TIMEOUT_MS = 75 * 1000;        // 75s por cada respuesta esperada en una ronda
 const MAX_LAWYERS_PER_SIDE = 3;             // tope de abogados, por bando
 const MAX_WITNESSES_PER_SIDE = 4;           // tope de testigos, por bando
+const HISTORY_LOOKBACK_MS = 10 * 60 * 1000; // 10 min de historial antes del juicio para contexto
 
 const SECTION_DELIM = '|||SECCION|||';
 const STYLE_RULES =
@@ -73,10 +74,80 @@ async function pause(channel, ms = 1500) {
   await humanizedTyping(channel, Math.min(ms, 8000)).catch(() => {});
 }
 
+// Manda un mensaje narrativo (fiscalia, apertura, contra-argumento, etc)
+// SIN pingear de nuevo a nadie, aunque el texto contenga <@id>. Discord
+// solo respeta allowedMentions si se lo pasamos explicitamente; sin esto,
+// cada mensaje narrado repetia el ping de todos los mencionados una y otra
+// vez. Los mensajes que SI necesitan avisar de verdad (llamar a alguien a
+// declarar, pedirle una respuesta) siguen usando channel.send normal.
+async function sendNarration(channel, text) {
+  return channel.send({ content: text, allowedMentions: { parse: [] } });
+}
+
+const EXTRA_TIME_PHRASES = [
+  'dame tiempo', 'dame chance', 'espera', 'un momento', 'un segundo',
+  'ya voy', 'estoy escribiendo', 'terminando de escribir', 'un toque',
+  'aguanta', 'aguante', 'dame un rato', 'necesito mas tiempo', 'necesito más tiempo',
+  'ando escribiendo', 'ando terminando',
+];
+
+function asksForMoreTime(content) {
+  if (!content) return false;
+  const lower = content.toLowerCase();
+  return EXTRA_TIME_PHRASES.some(p => lower.includes(p));
+}
+
+// Fetcha los ultimos N minutos de mensajes del canal (sin bots, sin comandos,
+// solo mensajes reales de usuarios) para armar un contexto de lo que paso
+// reciente antes de que arranque el juicio. Util para que la IA sepa que
+// acusar/defender, en vez de improvisar algo generico.
+async function fetchRecentChannelHistory(channel, lookbackMs = HISTORY_LOOKBACK_MS) {
+  try {
+    const now = Date.now();
+    const cutoff = now - lookbackMs;
+    const messages = [];
+
+    let lastId = null;
+    while (true) {
+      const batch = await channel.messages.fetch({
+        limit: 100,
+        ...(lastId ? { before: lastId } : {}),
+      }).catch(() => null);
+
+      if (!batch || batch.size === 0) break;
+
+      for (const msg of batch.values()) {
+        if (msg.createdTimestamp < cutoff) {
+          return messages;
+        }
+        if (msg.author.bot) continue;
+        if (msg.content.startsWith('/') || msg.content.startsWith('!')) continue;
+        messages.push({
+          author: msg.author.username,
+          content: msg.content.trim(),
+          timestamp: msg.createdTimestamp,
+        });
+      }
+
+      lastId = batch.last().id;
+    }
+
+    return messages.reverse();
+  } catch (err) {
+    console.error('[funadorSession/fetchRecentChannelHistory]', err.message);
+    return [];
+  }
+}
+
 // Manda un mensaje/pregunta y espera UNA respuesta real de esa persona en
 // el canal (o null si no contesto a tiempo). Marca/desmarca "pendiente"
 // para que index.js no la mande tambien a la IA normal.
-async function askAndWait(channel, userId, question, timeMs = ANSWER_TIMEOUT_MS) {
+//
+// Si la persona responde pidiendo mas tiempo ("dame chance", "un momento",
+// etc) en vez de dar su respuesta real, el bot le da UNA extension de
+// tiempo (mismo largo que el timeout original) en lugar de cerrarle la
+// ronda como si no hubiera contestado nada.
+async function askAndWait(channel, userId, question, timeMs = ANSWER_TIMEOUT_MS, allowExtension = true) {
   await pause(channel, 1300);
   await channel.send(question);
   markPending(channel.id, userId);
@@ -84,7 +155,16 @@ async function askAndWait(channel, userId, question, timeMs = ANSWER_TIMEOUT_MS)
     const collected = await channel
       .awaitMessages({ filter: m => m.author.id === userId, max: 1, time: timeMs, errors: ['time'] })
       .catch(() => null);
-    return collected?.first()?.content?.trim() || null;
+    const text = collected?.first()?.content?.trim() || null;
+
+    if (text && asksForMoreTime(text) && allowExtension) {
+      await pause(channel, 900);
+      await channel.send(`dale, tomate ${Math.round(timeMs / 1000)}s mas 🕐`);
+      unmarkPending(channel.id, userId);
+      return askAndWait(channel, userId, `${question} (tiempo extendido)`, timeMs, false);
+    }
+
+    return text;
   } finally {
     unmarkPending(channel.id, userId);
   }
@@ -119,29 +199,38 @@ async function sendInParts(channel, text) {
   const parts = text.split(SECTION_DELIM).map(p => p.trim()).filter(Boolean);
   for (const part of parts) {
     await pause(channel, 1800 + Math.random() * 1200);
-    await channel.send(part);
+    await sendNarration(channel, part);
   }
 }
 
 // Le da a `personId` una ventana para etiquetar hasta MAX_LAWYERS_PER_SIDE
 // "abogados" propios. Filtra bots, a la propia persona, al objetivo del
 // juicio y a cualquiera ya tomado por el otro bando (excludeIds), y corta
-// la lista al tope para que no se sumen 10 personas de una.
-async function collectLawyers(channel, personId, personMention, excludeIds, sideLabel) {
+// la lista al tope para que no se sumen 10 personas de una. Si la persona
+// pide mas tiempo (y no mando ninguna mencion en ese mensaje), le da UNA
+// extension de la misma duracion antes de cerrar la ventana.
+async function collectLawyers(channel, personId, personMention, excludeIds, sideLabel, timeMs = LAWYERS_WINDOW_MS, allowExtension = true) {
   await pause(channel, 1200);
   await channel.send(
-    `${personMention}, tenes ${LAWYERS_WINDOW_MS / 1000}s para etiquetar hasta ${MAX_LAWYERS_PER_SIDE} "abogados" ${sideLabel} si queres ayuda (mencionalos en un mensaje). Si no queres, dejalo pasar.`
+    `${personMention}, tenes ${Math.round(timeMs / 1000)}s para etiquetar hasta ${MAX_LAWYERS_PER_SIDE} "abogados" ${sideLabel} si queres ayuda (mencionalos en un mensaje). Si no queres, dejalo pasar.`
   );
   markPending(channel.id, personId);
   const collected = await channel
-    .awaitMessages({ filter: m => m.author.id === personId, max: 1, time: LAWYERS_WINDOW_MS, errors: ['time'] })
+    .awaitMessages({ filter: m => m.author.id === personId, max: 1, time: timeMs, errors: ['time'] })
     .catch(() => null);
   unmarkPending(channel.id, personId);
 
   if (!collected) return [];
 
-  const mentioned = [...collected.first().mentions.users.values()]
+  const firstMsg = collected.first();
+  const mentioned = [...firstMsg.mentions.users.values()]
     .filter(u => !u.bot && u.id !== personId && !excludeIds.has(u.id));
+
+  if (mentioned.length === 0 && allowExtension && asksForMoreTime(firstMsg.content)) {
+    await pause(channel, 900);
+    await channel.send(`dale, tomate ${Math.round(timeMs / 1000)}s mas 🕐`);
+    return collectLawyers(channel, personId, personMention, excludeIds, sideLabel, timeMs, false);
+  }
 
   // dedupe por si mencionaron al mismo dos veces, y recorta al tope
   const seen = new Set();
@@ -227,6 +316,19 @@ export async function startFunadorSession(interaction, targetUser) {
   await interaction.reply({ content: `dale, le pregunto a ${targetMention} si quiere jugar 👀`, ephemeral: false });
 
   try {
+    // ── 0. Fetchea historial reciente y arma contexto inicial ────────────
+    const rawHistory = await fetchRecentChannelHistory(channel, HISTORY_LOOKBACK_MS);
+    const historyText = rawHistory
+      .map(m => `${m.author}: ${m.content}`)
+      .join('\n');
+
+    const contextPrompt =
+      `Estas por armar un juicio de mentira contra ${targetMention}. Estos son los ultimos 10 minutos de chat:\n\n${historyText || '(sin historial reciente)'}\n\n` +
+      `Resume brevemente (max 2-3 lineas) que tipo de acusaciones podrian hacerle a ${targetMention} basandote SOLO en lo que ves arriba. ` +
+      `Si no hay casi nada, simplemente di "sin contexto especifico".`;
+    const contextResp = await askAI([{ role: 'user', content: contextPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
+    const juicioContext = contextResp?.text?.trim() || 'sin contexto especifico';
+
     // ── 1. Consentimiento del acusado, obligatorio ──────────────────────
     const consentMsg = await channel.send(buildConsentPrompt(initiatorMention, targetMention));
     await consentMsg.react('✅');
@@ -253,14 +355,14 @@ export async function startFunadorSession(interaction, targetUser) {
     const lawyerMentions = lawyerUsers.map(u => `<@${u.id}>`);
 
     await pause(channel, 1000);
-    await channel.send(lawyerMentions.length ? `defensa anotada: ${lawyerMentions.join(', ')} ⚖️` : 'sin abogados, se defiende solo/a 💪');
+    await sendNarration(channel, lawyerMentions.length ? `defensa anotada: ${lawyerMentions.join(', ')} ⚖️` : 'sin abogados, se defiende solo/a 💪');
 
     const excludeForAccuser = new Set([interaction.user.id, targetUser.id, ...lawyerUsers.map(u => u.id)]);
     const accuserLawyerUsers = await collectLawyers(channel, interaction.user.id, initiatorMention, excludeForAccuser, 'para tu lado (acusacion)');
     const accuserLawyerMentions = accuserLawyerUsers.map(u => `<@${u.id}>`);
 
     await pause(channel, 1000);
-    await channel.send(accuserLawyerMentions.length ? `apoyo de la acusacion anotado: ${accuserLawyerMentions.join(', ')} 📋` : `${initiatorMention} sigue solo/a con la acusacion, sin apoyo extra.`);
+    await sendNarration(channel, accuserLawyerMentions.length ? `apoyo de la acusacion anotado: ${accuserLawyerMentions.join(', ')} 📋` : `${initiatorMention} sigue solo/a con la acusacion, sin apoyo extra.`);
 
     // ── 3. Invitacion abierta a testigos, opcional, tope 4 por bando ─────
     const witnessMsg = await channel.send(
@@ -292,7 +394,7 @@ export async function startFunadorSession(interaction, targetUser) {
 
     // ── 4. Apertura + fiscalia inicial, narradas ─────────────────────────
     await pause(channel, 1500);
-    await channel.send(
+    await sendNarration(channel,
       `⚖️ **Se abre la sesion.** ${initiatorMention} pidio este juicio de mentira contra ${targetMention}.` +
       (lawyerMentions.length ? ` Defensa: ${lawyerMentions.join(', ')}.` : '') +
       (accuserLawyerMentions.length ? ` Apoyo de la acusacion: ${accuserLawyerMentions.join(', ')}.` : '') +
@@ -303,11 +405,12 @@ export async function startFunadorSession(interaction, targetUser) {
       `Estas narrando la apertura de la fiscalia en un juicio de mentira contra ${targetMention}, ` +
       `un juego que ${targetMention} acepto jugar despues de que ${initiatorMention} lo propuso. ` +
       `Usa SOLO lo que aparece en este historial reciente del canal (no inventes acusaciones nuevas). ` +
+      `Contexto previo: ${juicioContext}\n` +
       `${STYLE_RULES}\n\n` +
       `Historial:\n${recentText || '(casi no hay historial, improvisa algo liviano sin inventar acusaciones concretas)'}`;
     const fiscaliaResp = await askAI([{ role: 'user', content: fiscaliaPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
     await pause(channel, 1500);
-    await channel.send(fiscaliaResp?.text?.trim() || `La fiscalia dice que ${targetMention} tiene mucho que explicar hoy.`);
+    await sendNarration(channel, fiscaliaResp?.text?.trim() || `La fiscalia dice que ${targetMention} tiene mucho que explicar hoy.`);
 
     // ── 5. Interrogatorio al acusado: 2 rondas reales ────────────────────
     await pause(channel, 1500);
@@ -385,7 +488,7 @@ export async function startFunadorSession(interaction, targetUser) {
       `Otras declaraciones (testigos, abogados, acusador): ${testimoniesBlock}\n` +
       `Compara que tan bien se sostiene ${targetMention} frente a todo lo demas. ${STYLE_RULES}`;
     const contraResp = await askAI([{ role: 'user', content: contraPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
-    await channel.send(contraResp?.text?.trim() || `la cosa esta reñida entre la defensa de ${targetMention} y el resto...`);
+    await sendNarration(channel, contraResp?.text?.trim() || `la cosa esta reñida entre la defensa de ${targetMention} y el resto...`);
 
     // ── 10. Deliberacion + veredicto final ─────────────────────────────────
     await pause(channel, 1800);
@@ -406,10 +509,18 @@ export async function startFunadorSession(interaction, targetUser) {
       `3) Que tan cerrado o aplastante fue el resultado, con humor.\n` +
       `4) El veredicto final gracioso y liviano (tipo "culpable/inocente de [algo tierno/gracioso, ej: ser un migajero]"), sin sanciones reales, dejando claro que fue un juego. ${STYLE_RULES}`;
 
-    const veredictoResp = await askAI([{ role: 'user', content: veredictoPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
+    let veredictoResp = await askAI([{ role: 'user', content: veredictoPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
+
+    // Si fallo o vino vacio, reintentamos UNA vez antes de rendirnos, para
+    // no dejar el juicio colgado sin cierre (le paso al usuario que hubo
+    // que reintentar).
+    if (!veredictoResp?.text) {
+      await pause(channel, 1200);
+      veredictoResp = await askAI([{ role: 'user', content: veredictoPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
+    }
 
     if (!veredictoResp?.text) {
-      await channel.send('se me trabo la cabeza armando el veredicto, probemos de nuevo en un rato 😅');
+      await channel.send('se me trabo la cabeza armando el veredicto un par de veces, probemos de nuevo en un rato 😅');
       return;
     }
 
