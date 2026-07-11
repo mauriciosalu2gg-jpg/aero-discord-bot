@@ -1,23 +1,22 @@
 // core/funadorSession.js
-// "Juicio" en broma, tipo juego de mesa entre amigos, narrado en etapas
-// reales (no un bloque de texto de una sola vez). NUNCA arranca sin
-// permiso: primero le pregunta al acusado si quiere jugar, despues invita
-// (sin presionar) a que otros se sumen como "testigos" si quieren, y solo
-// si el acusado dijo que si se sigue. Una vez adentro, el bot le pide de
-// verdad su defensa/pruebas al acusado y espera su respuesta real en el
-// chat, despues le pide lo mismo a los testigos que se sumaron, y recien
-// con eso arma el veredicto -- que ademas se manda en varias partes con
-// pausas, como si se narrara en vivo. El "veredicto" usa unicamente lo que
-// ya esta visible en el historial del canal + lo que la gente escribio en
-// esta misma sesion (nada de vigilancia oculta ni evidencia guardada aparte).
+// "Juicio" en broma, tipo juego de mesa entre amigos, narrado en muchas
+// etapas reales (nunca un bloque de texto de una sola vez). NUNCA arranca
+// sin permiso: primero le pregunta al acusado si quiere jugar, despues
+// invita (sin presionar) a que otros se sumen como "testigos" si quieren,
+// y solo si el acusado dijo que si se sigue. Una vez adentro hay un
+// interrogatorio de verdad (varias rondas, esperando respuestas reales en
+// el chat) tanto al acusado como a los testigos, y recien al final el bot
+// delibera y decide un "ganador" (acusado vs testigos) segun que tan bien
+// se sostuvo cada lado. Todo usa unicamente el historial visible del canal
+// + lo que la gente escribio en esta misma sesion -- nada de vigilancia
+// oculta ni evidencia guardada aparte.
 import { askAI } from '../services/aiManager.js';
 import { getMemory } from './memory.js';
 import { humanizedTyping } from './typingDelay.js';
 
 const CONSENT_TIMEOUT_MS = 2 * 60 * 1000;   // 2 min para que el acusado consienta
 const WITNESS_WINDOW_MS = 45 * 1000;        // 45s abiertos para sumarse como testigo
-const DEFENSE_TIMEOUT_MS = 90 * 1000;       // 90s para que el acusado presente su defensa
-const TESTIMONY_TIMEOUT_MS = 75 * 1000;     // 75s para que los testigos declaren
+const ANSWER_TIMEOUT_MS = 75 * 1000;        // 75s por cada respuesta esperada en una ronda
 
 const SECTION_DELIM = '|||SECCION|||';
 
@@ -32,8 +31,42 @@ function buildConsentPrompt(initiator, targetMention) {
   );
 }
 
-async function pause(channel, ms = 1400) {
+async function pause(channel, ms = 1500) {
   await humanizedTyping(channel, Math.min(ms, 8000)).catch(() => {});
+}
+
+// Manda un mensaje/pregunta y espera UNA respuesta real de esa persona en
+// el canal (o null si no contesto a tiempo). No bloquea para siempre.
+async function askAndWait(channel, userId, question) {
+  await pause(channel, 1300);
+  await channel.send(question);
+  const collected = await channel
+    .awaitMessages({ filter: m => m.author.id === userId, max: 1, time: ANSWER_TIMEOUT_MS, errors: ['time'] })
+    .catch(() => null);
+  return collected?.first()?.content?.trim() || null;
+}
+
+// Le pide a la IA una repregunta corta y picante (pero amistosa) basada en
+// lo que la persona acaba de responder, para que el interrogatorio se
+// sienta vivo en vez de siempre la misma pregunta generica.
+async function generateFollowUp(guild, channelName, role, previousAnswer, targetName) {
+  const prompt =
+    `Estas narrando un juicio de mentira, tipo juego, contra ${targetName}. ` +
+    `El/la ${role} acaba de responder esto: "${previousAnswer}". ` +
+    `Escribi UNA sola repregunta corta (maximo 2 lineas), tono comedia amistosa tipo abogado de reality show, ` +
+    `nunca cruel ni insultos reales, que lo/la haga elaborar mas o lo/la ponga en aprietos de forma graciosa. ` +
+    `Responde SOLO con la pregunta, nada mas.`;
+
+  const response = await askAI([{ role: 'user', content: prompt }], 0, { guild, channelName, swearingAllowed: false }).catch(() => null);
+  return response?.text?.trim() || '¿algo mas que quieras agregar antes de que sigamos?';
+}
+
+async function sendInParts(channel, text) {
+  const parts = text.split(SECTION_DELIM).map(p => p.trim()).filter(Boolean);
+  for (const part of parts) {
+    await pause(channel, 1800 + Math.random() * 1200);
+    await channel.send(part);
+  }
 }
 
 export async function startFunadorSession(interaction, targetUser) {
@@ -69,7 +102,6 @@ export async function startFunadorSession(interaction, targetUser) {
       .catch(() => null);
 
     const accepted = consentCollected && [...consentCollected.values()][0]?.emoji.name === '✅';
-
     if (!accepted) {
       await channel.send(`bueno, quedamos ahi entonces, no hay juicio 🤝 (${targetUser} no dijo que si o no contesto a tiempo)`);
       return;
@@ -86,100 +118,98 @@ export async function startFunadorSession(interaction, targetUser) {
       : new Map();
     const witnesses = [...reactionUsers.values()].filter(u => !u.bot && u.id !== targetUser.id);
 
-    // ── 3. Apertura del juicio, narrada ─────────────────────────────────
-    await pause(channel, 1500);
-    await channel.send(
-      `⚖️ **Se abre la sesion.** Hoy tenemos en el banquillo a ${targetUser} por las acusaciones que se vinieron acumulando en el chat.` +
-      (witnesses.length ? ` Contamos con ${witnesses.length} testigo(s): ${witnesses.map(w => `<@${w.id}>`).join(', ')}.` : ' No hay testigos anotados, va a ser mano a mano.')
-    );
-
-    // ── 4. Se le pide la defensa al acusado, y se espera de verdad ──────
-    await pause(channel, 1500);
-    await channel.send(`<@${targetUser.id}>, decime: ¿que pruebas o defensa tenes para este juicio? Tenes 90 segundos, contame en el chat 🎤`);
-
-    const defenseCollected = await channel
-      .awaitMessages({
-        filter: m => m.author.id === targetUser.id,
-        max: 1,
-        time: DEFENSE_TIMEOUT_MS,
-        errors: ['time'],
-      })
-      .catch(() => null);
-
-    const defenseText = defenseCollected?.first()?.content?.trim();
-
-    await pause(channel, 1200);
-    if (defenseText) {
-      await channel.send(`tomo nota de tu defensa, ${targetUser.username} 📝`);
-    } else {
-      await channel.send(`${targetUser.username} se quedo callado, no presento defensa... eso no pinta bien 👀`);
-    }
-
-    // ── 5. Se les pide testimonio a los testigos (si hay), y se espera ──
-    let testimonies = [];
-    if (witnesses.length) {
-      await pause(channel, 1200);
-      await channel.send(
-        `Testigos (${witnesses.map(w => `<@${w.id}>`).join(', ')}): ¿que tienen para declarar? Tienen 75 segundos entre todos, uno por uno en el chat 🎤`
-      );
-
-      const witnessIds = new Set(witnesses.map(w => w.id));
-      const testimonyCollected = await channel
-        .awaitMessages({
-          filter: m => witnessIds.has(m.author.id),
-          max: witnesses.length,
-          time: TESTIMONY_TIMEOUT_MS,
-          errors: [],
-        })
-        .catch(() => null);
-
-      testimonies = testimonyCollected
-        ? [...testimonyCollected.values()].map(m => `${m.author.username}: ${m.content}`)
-        : [];
-
-      await pause(channel, 1000);
-      await channel.send(testimonies.length ? 'testimonios recibidos ✍️' : 'nadie declaro nada, seguimos igual 🤷');
-    }
-
-    // ── 6. Veredicto: se arma con lo que ya esta visible + lo dicho aca ──
-    await pause(channel, 1800);
-    await channel.send('dejenme deliberar un toque... ⚖️');
-
     const memory = await getMemory(channelId, guild?.id).catch(() => ({ messages: [] }));
     const recentText = (memory.messages || [])
       .slice(-25)
       .map(m => `${m.authorName || m.role}: ${m.content}`)
       .join('\n');
 
-    const prompt =
-      `Estas narrando el veredicto de un "juicio" de mentira contra ${targetUser.username}, ` +
-      `un juego que el/ella acepto jugar. Usa SOLO lo que aparece en el historial del canal y lo que ` +
-      `se declaro en esta sesion (no inventes acusaciones nuevas que no esten ahi). Tono: comedia amistosa ` +
-      `tipo reality show, nunca cruel, nunca insultos reales.\n\n` +
-      `Defensa presentada por ${targetUser.username}: ${defenseText || '(no presento defensa)'}\n\n` +
-      `Testimonios: ${testimonies.length ? testimonies.join(' | ') : '(sin testimonios)'}\n\n` +
-      `Historial reciente del canal:\n${recentText || '(casi no hay historial, improvisa algo liviano sin inventar acusaciones concretas)'}\n\n` +
+    // ── 3. Apertura + fiscalia inicial, narradas ────────────────────────
+    await pause(channel, 1500);
+    await channel.send(
+      `⚖️ **Se abre la sesion.** Hoy tenemos en el banquillo a ${targetUser} por lo que se vino acumulando en el chat.` +
+      (witnesses.length ? ` Contamos con ${witnesses.length} testigo(s): ${witnesses.map(w => `<@${w.id}>`).join(', ')}.` : ' No hay testigos anotados, va a ser mano a mano.')
+    );
+
+    const fiscaliaPrompt =
+      `Estas narrando la apertura de la fiscalia en un juicio de mentira contra ${targetUser.username}, ` +
+      `un juego que el/ella acepto jugar. Usa SOLO lo que aparece en este historial reciente del canal ` +
+      `(no inventes acusaciones nuevas). Tono: comedia amistosa tipo reality show, nunca cruel, nunca insultos reales. ` +
+      `Escribi 2-3 lineas presentando el "caso" contra ${targetUser.username}, citando algo puntual entre comillas si aplica.\n\n` +
+      `Historial:\n${recentText || '(casi no hay historial, improvisa algo liviano sin inventar acusaciones concretas)'}`;
+    const fiscaliaResp = await askAI([{ role: 'user', content: fiscaliaPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
+    await pause(channel, 1500);
+    await channel.send(fiscaliaResp?.text?.trim() || `La fiscalia dice que ${targetUser.username} tiene mucho que explicar hoy.`);
+
+    // ── 4. Interrogatorio al acusado: 2 rondas reales ───────────────────
+    await pause(channel, 1500);
+    await channel.send(`🎤 Turno de la defensa. <@${targetUser.id}>, empecemos.`);
+
+    const answer1 = await askAndWait(channel, targetUser.id, `<@${targetUser.id}>, ¿que pruebas o defensa tenes para este juicio? Tenes ${ANSWER_TIMEOUT_MS / 1000}s.`);
+    let answer2 = null;
+    if (answer1) {
+      const followUp1 = await generateFollowUp(guild, channel.name, 'acusado', answer1, targetUser.username);
+      answer2 = await askAndWait(channel, targetUser.id, `<@${targetUser.id}>, ${followUp1}`);
+    } else {
+      await pause(channel, 1200);
+      await channel.send(`${targetUser.username} se quedo callado, no presento defensa... eso no pinta bien 👀`);
+    }
+
+    const defenseText = [answer1, answer2].filter(Boolean).join(' / ') || '(no presento defensa)';
+
+    // ── 5. Interrogatorio a testigos (si hay): 2 rondas reales ──────────
+    let testimonies = [];
+    if (witnesses.length) {
+      await pause(channel, 1500);
+      await channel.send(`🎤 Turno de los testigos: ${witnesses.map(w => `<@${w.id}>`).join(', ')}, uno por uno.`);
+
+      for (const witness of witnesses) {
+        const t1 = await askAndWait(channel, witness.id, `<@${witness.id}>, ¿que tenes para declarar sobre ${targetUser.username}? Tenes ${ANSWER_TIMEOUT_MS / 1000}s.`);
+        if (!t1) continue;
+        const followUpW = await generateFollowUp(guild, channel.name, 'testigo', t1, targetUser.username);
+        const t2 = await askAndWait(channel, witness.id, `<@${witness.id}>, ${followUpW}`);
+        testimonies.push(`${witness.username}: ${[t1, t2].filter(Boolean).join(' / ')}`);
+      }
+
+      await pause(channel, 1200);
+      await channel.send(testimonies.length ? 'testimonios recibidos ✍️' : 'nadie declaro nada al final, seguimos igual 🤷');
+    }
+
+    // ── 6. Contra-argumento narrado ──────────────────────────────────────
+    await pause(channel, 1800);
+    const contraPrompt =
+      `Estas narrando el contra-argumento en un juicio de mentira contra ${targetUser.username}. ` +
+      `Defensa presentada: ${defenseText}\n` +
+      `Testimonios: ${testimonies.length ? testimonies.join(' | ') : '(sin testimonios)'}\n` +
+      `Escribi 2-3 lineas comparando que tan bien se sostiene la defensa contra los testimonios (si hay), ` +
+      `tono comedia amistosa, nunca cruel ni insultos reales.`;
+    const contraResp = await askAI([{ role: 'user', content: contraPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
+    await channel.send(contraResp?.text?.trim() || 'la cosa esta reñida entre la defensa y los testimonios...');
+
+    // ── 7. Deliberacion + veredicto final (acusado vs testigos) ─────────
+    await pause(channel, 1800);
+    await channel.send('dejenme deliberar un toque... ⚖️');
+
+    const veredictoPrompt =
+      `Sos el juez de un juicio de mentira (juego que ${targetUser.username} acepto jugar). Con todo lo` +
+      ` recopilado, decidi un "ganador": o convencio mas la defensa de ${targetUser.username}, o convencieron mas` +
+      ` los testimonios en su contra (si no hubo testigos, evalua la defensa contra el historial nomas).\n\n` +
+      `Defensa de ${targetUser.username}: ${defenseText}\n` +
+      `Testimonios: ${testimonies.length ? testimonies.join(' | ') : '(sin testimonios)'}\n` +
+      `Historial reciente del canal:\n${recentText || '(sin historial relevante)'}\n\n` +
       `Estructura tu respuesta en EXACTAMENTE 3 partes separadas por la marca ${SECTION_DELIM} (sin numerarlas, sin titulos):\n` +
-      `1) Un resumen corto de los argumentos en contra, citando cosas puntuales entre comillas si aplica.\n` +
-      `2) Como se sostiene (o no) la defensa/testimonios que se presentaron recien.\n` +
-      `3) El veredicto final gracioso y liviano (tipo "culpable de [algo tierno/gracioso]"), sin sanciones reales, dejando claro que fue un juego.`;
+      `1) Resumen de por que gano quien gano (defensa o testigos/acusacion), citando algo puntual si aplica.\n` +
+      `2) Que tan cerrado o aplastante fue el resultado, con humor.\n` +
+      `3) El veredicto final gracioso y liviano (tipo "culpable/inocente de [algo tierno/gracioso]", y quien "gano" el juicio), sin sanciones reales, dejando claro que fue un juego.`;
 
-    const response = await askAI(
-      [{ role: 'user', content: prompt }],
-      0,
-      { guild, channelName: channel.name, swearingAllowed: false }
-    ).catch(() => null);
+    const veredictoResp = await askAI([{ role: 'user', content: veredictoPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
 
-    if (!response?.text) {
+    if (!veredictoResp?.text) {
       await channel.send('se me trabo la cabeza armando el veredicto, probemos de nuevo en un rato 😅');
       return;
     }
 
-    const parts = response.text.split(SECTION_DELIM).map(p => p.trim()).filter(Boolean);
-    for (let i = 0; i < parts.length; i++) {
-      await pause(channel, 1800 + Math.random() * 1200);
-      await channel.send(parts[i]);
-    }
+    await sendInParts(channel, veredictoResp.text);
   } catch (err) {
     console.error('[funadorSession]', err.message);
     await channel.send('algo se rompio armando el juicio, quedo cancelado por ahora').catch(() => {});
