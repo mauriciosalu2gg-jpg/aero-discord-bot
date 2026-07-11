@@ -17,6 +17,8 @@ const SECRETS = {
     cerebras: { apiKey: process.env.CEREBRAS_API_KEY || '' },
     openrouter: { apiKey: process.env.OPENROUTER_API_KEY || '' },
     huggingface: { apiKey: process.env.HUGGINGFACE_API_KEY || '' },
+    mistral: { apiKey: process.env.MISTRAL_API_KEY || '' },
+    cohere: { apiKey: process.env.COHERE_API_KEY || '' },
   },
 };
 

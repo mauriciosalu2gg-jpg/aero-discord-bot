@@ -16,6 +16,8 @@ const PROVIDER_DISPLAY_NAMES = {
   cerebras: 'Cerebras',
   openrouter: 'OpenRouter',
   huggingface: 'Hugging Face',
+  mistral: 'Mistral',
+  cohere: 'Cohere',
   ollama: 'Ollama (local)',
   lmstudio: 'LM Studio (local)',
 };
@@ -28,7 +30,8 @@ export async function handleModelStatusCommand(interaction) {
   await interaction.deferReply();
 
   const active = getActiveProvider();
-  const providerNames = secrets.PROVIDER_PRIORITY;
+  const configured = new Set(secrets.getAvailableProviders().map(p => p.name));
+  const providerNames = secrets.PROVIDER_PRIORITY.filter(name => configured.has(name));
   const snapshots = getAllSnapshots(providerNames);
 
   const lines = [];
@@ -39,14 +42,19 @@ export async function handleModelStatusCommand(interaction) {
     lines.push('Todavia no hay un proveedor cacheado, se elige apenas mande el proximo mensaje.');
   }
 
+  // Solo consideramos proveedores CON API Key configurada (sino el status
+  // "Healthy" por default de uno sin key configurada confunde, haciendo
+  // parecer que hay mas opciones disponibles de las que realmente hay).
   const healthy = snapshots
-    .filter(s => s.status === 'Healthy' && (!active || s.name !== active.name))
+    .filter(s => s.status === 'Healthy' && !s.onCooldown && (!active || s.name !== active.name))
     .map(s => displayName(s.name));
 
   if (healthy.length) {
-    lines.push(`Las otras companias sanas que estan listas para usarse son: ${healthy.join(', ')}.`);
+    lines.push(`Las otras companias sanas y listas para usarse son: ${healthy.join(', ')}.`);
+  } else if (providerNames.length <= 1) {
+    lines.push('No hay otras companias configuradas todavia -- agrega otra API Key en el .env para tener fallback (ej: OPENROUTER_API_KEY, que tiene modelos gratis).');
   } else {
-    lines.push('No hay otras companias sanas ahora mismo (o son las unicas con API Key configurada).');
+    lines.push('El resto de las companias configuradas estan en cooldown o con error ahora mismo, usa /provider para el detalle.');
   }
 
   const guildTokens = interaction.guildId ? await getGuildTokenUsage(interaction.guildId) : 0;

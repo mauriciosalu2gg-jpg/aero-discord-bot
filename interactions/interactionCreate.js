@@ -10,6 +10,7 @@ import { handleModelStatusCommand } from './handlers/modelStatusHandler.js';
 import { handleResetMemoryCommand } from './handlers/resetMemoryHandler.js';
 import { handleFunadorCommand } from './handlers/funadorHandler.js';
 import { handleObjecionCommand } from './handlers/objecionHandler.js';
+import { handleProviderStatusCommand } from './handlers/providerStatusHandler.js';
 
 const TOGGLE_COMMANDS = new Set(['ambient-mode', 'forcetalk', 'security']);
 
@@ -18,7 +19,7 @@ const TOGGLE_COMMANDS = new Set(['ambient-mode', 'forcetalk', 'security']);
 // registerObjection() en funadorSession.js contra los abogados reales de
 // la sesion activa, no depende de ser Lara/Gio. El resto son exclusivos
 // de Lara/Gio.
-const OPEN_COMMANDS = new Set(['modelstatus', 'objecion']);
+const OPEN_COMMANDS = new Set(['modelstatus', 'objecion', 'provider']);
 
 export async function handleInteraction(interaction) {
   if (!interaction.isChatInputCommand()) return;
@@ -53,6 +54,10 @@ export async function handleInteraction(interaction) {
     }
     if (commandName === 'objecion') {
       await handleObjecionCommand(interaction);
+      return;
+    }
+    if (commandName === 'provider') {
+      await handleProviderStatusCommand(interaction);
       return;
     }
   } catch (err) {

@@ -1,4 +1,11 @@
 // commands/provider.js
+// DEPRECADO: este archivo nunca estuvo importado/cableado en index.js, asi
+// que el comando de texto !provider jamas funciono en la practica. La
+// funcionalidad equivalente (y mejorada) ahora vive como slash command
+// real en interactions/handlers/providerStatusHandler.js (/provider).
+// Se deja este archivo sin borrar por si hay referencias externas, pero
+// no se debe volver a cablear: usar el slash command en su lugar.
+//
 // !provider / !status  -> muestra el estado completo del orquestador de IA:
 // proveedor activo, modelo, salud de cada proveedor, cooldown restante y
 // tiempo de respuesta promedio. Disponible para cualquiera (solo lectura).

@@ -38,11 +38,32 @@ const MAX_WITNESSES_PER_SIDE = 4;           // tope de testigos, por bando
 const HISTORY_LOOKBACK_MS = 10 * 60 * 1000; // 10 min de historial antes del juicio para contexto
 
 const SECTION_DELIM = '|||SECCION|||';
+// Version recortada de las reglas de estilo (mismo contenido funcional,
+// menos texto de relleno). Se repite en CASI todos los prompts del juicio,
+// asi que cada palabra que se saca aca se multiplica por ~12-15 llamadas
+// a la IA en una sesion tipica -- es el ahorro de tokens con mas impacto
+// real sin cambiar el comportamiento.
 const STYLE_RULES =
-  'Reglas obligatorias: (1) para nombrar a alguien usa EXCLUSIVAMENTE las menciones exactas ' +
-  'que te doy entre <> (ej: <@123>), nunca inventes ni uses un nombre de usuario suelto; ' +
-  '(2) maximo 3 lineas cortas, nada de parrafos largos; (3) tono comedia amistosa tipo reality ' +
-  'show, nunca cruel, nunca insultos reales; (4) no inventes acusaciones que no esten en lo que te paso.';
+  'Reglas: (1) para nombrar gente usa SOLO las menciones <> dadas, nunca inventes nombres; ' +
+  '(2) max 3 lineas; (3) comedia amistosa tipo reality, nunca insultos reales; ' +
+  '(4) no inventes acusaciones fuera de lo dado.';
+
+// Tope de caracteres para el bloque de historial/contexto que se manda en
+// cada prompt (fiscalia, contra-argumento, veredicto, etc). Recortar esto
+// es el segundo mayor ahorro: el historial se repite varias veces a lo
+// largo de la sesion.
+const HISTORY_CHAR_LIMIT = 1400;
+
+// Recorta un bloque de texto (historial o testimonios ya unidos) a un
+// tope de caracteres, cortando por mensaje/entrada entera cuando se puede
+// en vez de a la mitad de una linea, para no mandar contexto trunco feo
+// (y ahorra tokens de entrada sin perder la sustancia del historial).
+function capText(text, limit = HISTORY_CHAR_LIMIT) {
+  if (!text || text.length <= limit) return text;
+  const cut = text.slice(-limit); // nos quedamos con lo MAS RECIENTE, que es lo mas relevante
+  const firstBreak = cut.indexOf('\n');
+  return firstBreak > 0 && firstBreak < 200 ? cut.slice(firstBreak + 1) : cut;
+}
 
 // channelId -> true mientras hay una sesion en curso (evita solapar bits)
 const activeSessions = new Set();
@@ -271,10 +292,9 @@ async function resolveAnyPendingObjection(channel, guild, targetMention) {
   for (const obj of queue) {
     const objMention = `<@${obj.userId}>`;
     const prompt =
-      `Estas narrando un juicio de mentira contra ${targetMention}. Un abogado de la ${obj.side} ` +
-      `(${objMention}) acaba de gritar "💪 OBJECION" con este motivo: "${obj.motivo}". ` +
-      `Narra en 1-2 lineas como reacciona la sala a esa objecion (con humor, sin resolverla de forma seria, ` +
-      `es solo un momento dramatico de comedia). ${STYLE_RULES}`;
+      `Juicio de mentira contra ${targetMention}. Abogado de la ${obj.side} (${objMention}) grito ` +
+      `"💪 OBJECION", motivo: "${capText(obj.motivo, 150)}". ` +
+      `Narra en 1-2 lineas la reaccion de la sala (humor, sin resolverla en serio). ${STYLE_RULES}`;
     const resp = await askAI([{ role: 'user', content: prompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
     await pause(channel, 800);
     await channel.send(`💪 **${objMention} OBJECION!**\n${resp?.text?.trim() || 'la sala queda en silencio un segundo...'}`);
@@ -288,12 +308,11 @@ async function resolveAnyPendingObjection(channel, guild, targetMention) {
 // como el "golpe de gracia" del interrogatorio.
 async function generateFollowUp(guild, channelName, roleLabel, previousAnswer, targetMention, intensity = 1) {
   const intensityInstruction = intensity >= 2
-    ? 'Esta es la ULTIMA repregunta de la ronda, asi que hacela mas picante y comprometedora que la anterior, buscando la contradiccion o el punto flojo de lo que dijo.'
-    : 'Hacela para que elabore mas o quede en un aprieto gracioso, sin ser la mas fuerte todavia (guardate algo para despues).';
+    ? 'Es la ULTIMA repregunta: mas picante/comprometedora, busca la contradiccion.'
+    : 'Que elabore mas o quede en un aprieto gracioso, sin ser la mas fuerte (guardate algo).';
   const prompt =
-    `Estas narrando un juicio de mentira, tipo juego, contra ${targetMention}. ` +
-    `El/la ${roleLabel} acaba de responder esto: "${previousAnswer}". ` +
-    `Escribi UNA sola repregunta corta (maximo 2 lineas). ${intensityInstruction} ${STYLE_RULES} Responde SOLO con la pregunta, nada mas.`;
+    `Juicio de mentira contra ${targetMention}. El/la ${roleLabel} respondio: "${capText(previousAnswer, 300)}". ` +
+    `UNA repregunta corta (max 2 lineas). ${intensityInstruction} ${STYLE_RULES} Responde SOLO la pregunta.`;
 
   const response = await askAI([{ role: 'user', content: prompt }], 0, { guild, channelName, swearingAllowed: false }).catch(() => null);
   return response?.text?.trim() || '¿algo mas que quieras agregar antes de que sigamos?';
@@ -375,14 +394,11 @@ async function classifyAndCapWitnesses(guild, channelName, targetMention, witnes
 
   const witnessList = witnesses.map(w => `<@${w.id}>`).join(', ');
   const prompt =
-    `Estas por armar un juicio de mentira contra ${targetMention}. Estas personas se anotaron ` +
-    `como testigos: ${witnessList}. Basandote en este historial reciente del canal, decidi para ` +
-    `cada una si probablemente va a jugar A FAVOR o EN CONTRA de ${targetMention} (si no hay pistas claras, ` +
-    `repartilos de forma pareja entre los dos bandos). CADA PERSONA VA EN UN SOLO BANDO, NUNCA la repitas ` +
-    `en los dos arrays ni la pongas dos veces en el mismo array.\n\n` +
-    `Historial:\n${recentText || '(sin historial relevante, reparti parejo)'}\n\n` +
-    `Responde SOLO con JSON valido, sin texto extra, con este formato exacto: ` +
-    `{"favor": ["<@id>", ...], "contra": ["<@id>", ...]}`;
+    `Juicio de mentira contra ${targetMention}. Testigos anotados: ${witnessList}. ` +
+    `Segun el historial, clasifica cada uno como A FAVOR o EN CONTRA de ${targetMention} ` +
+    `(sin pistas claras, reparti parejo). Cada persona en UN SOLO bando, sin repetir.\n` +
+    `Historial:\n${capText(recentText, 700) || '(sin historial, reparti parejo)'}\n\n` +
+    `Responde SOLO JSON: {"favor": ["<@id>", ...], "contra": ["<@id>", ...]}`;
 
   const resp = await askAI([{ role: 'user', content: prompt }], 0, { guild, channelName, swearingAllowed: false }).catch(() => null);
 
@@ -497,14 +513,15 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
       juicioContext = razonLimpia;
     } else {
       const rawHistory = await fetchRecentChannelHistory(channel, HISTORY_LOOKBACK_MS);
-      const historyText = rawHistory
-        .map(m => `${m.author}: ${m.content}`)
-        .join('\n');
+      const historyText = capText(
+        rawHistory.map(m => `${m.author}: ${m.content}`).join('\n'),
+        900 // este prompt solo necesita pistas para armar 2-3 lineas, no el historial entero
+      );
 
       const contextPrompt =
-        `Estas por armar un juicio de mentira contra ${targetMention}. Estos son los ultimos 10 minutos de chat:\n\n${historyText || '(sin historial reciente)'}\n\n` +
-        `Resume brevemente (max 2-3 lineas) que tipo de acusaciones podrian hacerle a ${targetMention} basandote SOLO en lo que ves arriba. ` +
-        `Si no hay casi nada, simplemente di "sin contexto especifico".`;
+        `Juicio de mentira contra ${targetMention}. Chat reciente:\n${historyText || '(sin historial reciente)'}\n\n` +
+        `Resumi en 2-3 lineas que acusaciones le podrian caber a ${targetMention} SOLO segun lo de arriba. ` +
+        `Si no hay casi nada, decí "sin contexto especifico".`;
       const contextResp = await askAI([{ role: 'user', content: contextPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
       juicioContext = contextResp?.text?.trim() || 'sin contexto especifico';
     }
@@ -596,12 +613,10 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
     await channel.send({ content: rolesSummary, allowedMentions: { users: [...new Set([targetUser.id, interaction.user.id, ...lawyerUsers.map(u => u.id), ...accuserLawyerUsers.map(u => u.id), ...witnesses.map(u => u.id)])] } });
 
     const fiscaliaPrompt =
-      `Estas narrando la apertura de la fiscalia en un juicio de mentira contra ${targetMention}, ` +
-      `un juego que ${targetMention} acepto jugar despues de que ${initiatorMention} lo propuso. ` +
-      `Usa SOLO lo que aparece en este historial reciente del canal, y sobre todo el tema/razon dado (no inventes acusaciones nuevas fuera de eso). ` +
-      `TEMA DEL JUICIO (el eje de todo): ${juicioContext}\n` +
-      `${STYLE_RULES}\n\n` +
-      `Historial:\n${recentText || '(casi no hay historial, quedate con el tema dado arriba)'}`;
+      `Apertura de la fiscalia, juicio de mentira contra ${targetMention} (${targetMention} acepto jugar, ${initiatorMention} lo propuso). ` +
+      `Usa SOLO el tema dado y el historial (no inventes acusaciones nuevas). ` +
+      `TEMA: ${juicioContext}\n${STYLE_RULES}\n` +
+      `Historial:\n${capText(recentText) || '(casi sin historial, usa el tema)'}`;
     const fiscaliaResp = await askAI([{ role: 'user', content: fiscaliaPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
     await pause(channel, 1500);
     await sendNarration(channel, fiscaliaResp?.text?.trim() || `La fiscalia dice que ${targetMention} tiene mucho que explicar hoy.`);
@@ -685,10 +700,10 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
     // del contra-argumento/veredicto sin alargar de mas la espera real.
     if (lawyerMentions.length || testimonies.some(t => t.role === 'testigo')) {
       const closingDefensePrompt =
-        `Estas narrando el alegato final de la DEFENSA de ${targetMention} en un juicio de mentira. ` +
-        `Defensa dada por ${targetMention}: ${defenseText || '(no presento defensa)'}\n` +
-        `Declaraciones a favor: ${testimonies.filter(t => t.role !== 'acusador' && t.role !== 'abogado de la acusacion').map(t => `${t.mention}: ${t.text}`).join(' | ') || '(ninguna)'}\n` +
-        `Escribi 2-3 lineas resumiendo por que ${targetMention} deberia salir bien parado de esto, con humor. ${STYLE_RULES}`;
+        `Alegato final de la DEFENSA de ${targetMention}, juicio de mentira. ` +
+        `Defensa: ${capText(defenseText, 400) || '(no presento defensa)'}\n` +
+        `A favor: ${capText(testimonies.filter(t => t.role !== 'acusador' && t.role !== 'abogado de la acusacion').map(t => `${t.mention}: ${t.text}`).join(' | '), 500) || '(ninguna)'}\n` +
+        `2-3 lineas, con humor, por que ${targetMention} deberia salir bien parado. ${STYLE_RULES}`;
       const closingDefenseResp = await askAI([{ role: 'user', content: closingDefensePrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
       await pause(channel, 1500);
       await sendNarration(channel, `📚 **Alegato final de la defensa:**\n${closingDefenseResp?.text?.trim() || `${targetMention} no la tuvo facil, pero dio pelea.`}`);
@@ -698,10 +713,10 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
     // acusador, con o sin abogados extra de su lado).
     {
       const closingAccusationPrompt =
-        `Estas narrando el alegato final de la ACUSACION contra ${targetMention} en un juicio de mentira. ` +
-        `Testimonio del acusador: ${accuserTestimony || '(no agrego nada nuevo)'}\n` +
-        `Declaraciones en contra: ${testimonies.filter(t => t.role === 'abogado de la acusacion' || t.role === 'acusador').map(t => `${t.mention}: ${t.text}`).join(' | ') || '(ninguna)'}\n` +
-        `Escribi 2-3 lineas resumiendo por que ${targetMention} deberia ser encontrado culpable, con humor. ${STYLE_RULES}`;
+        `Alegato final de la ACUSACION contra ${targetMention}, juicio de mentira. ` +
+        `Testimonio del acusador: ${capText(accuserTestimony, 400) || '(no agrego nada nuevo)'}\n` +
+        `En contra: ${capText(testimonies.filter(t => t.role === 'abogado de la acusacion' || t.role === 'acusador').map(t => `${t.mention}: ${t.text}`).join(' | '), 500) || '(ninguna)'}\n` +
+        `2-3 lineas, con humor, por que ${targetMention} deberia ser culpable. ${STYLE_RULES}`;
       const closingAccusationResp = await askAI([{ role: 'user', content: closingAccusationPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
       await pause(channel, 1500);
       await sendNarration(channel, `📜 **Alegato final de la acusacion:**\n${closingAccusationResp?.text?.trim() || `la acusacion no va a soltar esto tan facil.`}`);
@@ -713,10 +728,10 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
       ? testimonies.map(t => `${t.mention} (${t.role}): ${t.text}`).join(' | ')
       : '(sin testimonios de nadie)';
     const contraPrompt =
-      `Estas narrando el contra-argumento en un juicio de mentira contra ${targetMention}. ` +
-      `Defensa de ${targetMention}: ${defenseText || '(no presento defensa)'}\n` +
-      `Otras declaraciones (testigos, abogados, acusador): ${testimoniesBlock}\n` +
-      `Compara que tan bien se sostiene ${targetMention} frente a todo lo demas. ${STYLE_RULES}`;
+      `Contra-argumento, juicio de mentira contra ${targetMention}. ` +
+      `Defensa: ${capText(defenseText, 500) || '(no presento defensa)'}\n` +
+      `Otras declaraciones: ${capText(testimoniesBlock, 700)}\n` +
+      `Compara que tan bien se sostiene ${targetMention}. ${STYLE_RULES}`;
     const contraResp = await askAI([{ role: 'user', content: contraPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
     await sendNarration(channel, contraResp?.text?.trim() || `la cosa esta reñida entre la defensa de ${targetMention} y el resto...`);
 
@@ -725,20 +740,18 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
     await channel.send('dejenme deliberar un toque... ⚖️');
 
     const veredictoPrompt =
-      `Sos el juez de un juicio de mentira (juego que ${targetMention} acepto jugar, propuesto por ${initiatorMention}). ` +
-      `Cada participante pudo haber jugado A FAVOR o EN CONTRA de ${targetMention}, sin importar si vino como testigo, ` +
-      `abogado (de cualquiera de los dos bandos) o acusador -- juzga por lo que REALMENTE dijeron, no por su rol o etiqueta ` +
-      `(un "abogado defensor" que dijo algo que perjudica a ${targetMention} cuenta en contra, y un "testigo" que lo defendio ` +
-      `cuenta a favor).\n\n` +
-      `TEMA DEL JUICIO: ${juicioContext}\n` +
-      `Defensa de ${targetMention}: ${defenseText || '(no presento defensa)'}\n` +
-      `Declaraciones de otros: ${testimoniesBlock}\n` +
-      `Historial reciente del canal:\n${recentText || '(sin historial relevante)'}\n\n` +
-      `Estructura tu respuesta en EXACTAMENTE 4 partes separadas por la marca ${SECTION_DELIM} (sin numerarlas, cada parte de maximo 3 lineas):\n` +
-      `1) **Analisis:** quien jugo a favor y quien en contra de ${targetMention}, y por que (segun lo que dijeron).\n` +
-      `2) **Defensa:** si la defensa de ${targetMention} se sostuvo o no frente a todo eso.\n` +
-      `3) **Resultado:** que tan cerrado o aplastante fue, con humor.\n` +
-      `4) Empeza esta parte con la linea exacta "🏛️ **VEREDICTO FINAL**" y despues el veredicto gracioso y liviano (tipo "culpable/inocente de [algo tierno/gracioso, ej: ser un migajero]"), sin sanciones reales, dejando claro que fue un juego. ${STYLE_RULES}`;
+      `Sos el juez de un juicio de mentira (${targetMention} acepto jugar, propuesto por ${initiatorMention}). ` +
+      `Juzga por lo que REALMENTE dijo cada uno, no por su rol/etiqueta (un abogado defensor que perjudico a ` +
+      `${targetMention} cuenta en contra; un testigo que lo defendio cuenta a favor).\n` +
+      `TEMA: ${juicioContext}\n` +
+      `Defensa: ${capText(defenseText, 500) || '(no presento defensa)'}\n` +
+      `Otras declaraciones: ${capText(testimoniesBlock, 900)}\n` +
+      `Historial:\n${capText(recentText, 600) || '(sin historial relevante)'}\n\n` +
+      `Responde en EXACTAMENTE 4 partes separadas por ${SECTION_DELIM} (sin numerar, max 3 lineas c/u):\n` +
+      `1) **Analisis:** quien jugo a favor/en contra de ${targetMention} y por que.\n` +
+      `2) **Defensa:** si se sostuvo o no.\n` +
+      `3) **Resultado:** que tan cerrado o aplastante, con humor.\n` +
+      `4) Empeza con "🏛️ **VEREDICTO FINAL**" y el veredicto gracioso/liviano (ej: "culpable de ser un migajero"), sin sanciones reales. ${STYLE_RULES}`;
     let veredictoResp = await askAI([{ role: 'user', content: veredictoPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
 
     // Si fallo o vino vacio, reintentamos UNA vez antes de rendirnos, para

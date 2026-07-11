@@ -9,6 +9,8 @@ import { callAnthropic } from '../adapters/anthropic.js';
 import { callCerebras } from '../adapters/cerebras.js';
 import { callOpenRouter } from '../adapters/openrouter.js';
 import { callHuggingFace } from '../adapters/huggingface.js';
+import { callMistral } from '../adapters/mistral.js';
+import { callCohere } from '../adapters/cohere.js';
 
 export const PROVIDER_ADAPTERS = {
   gemini: callGemini,
@@ -18,6 +20,8 @@ export const PROVIDER_ADAPTERS = {
   cerebras: callCerebras,
   openrouter: callOpenRouter,
   huggingface: callHuggingFace,
+  mistral: callMistral,
+  cohere: callCohere,
 };
 
 /**

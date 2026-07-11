@@ -19,6 +19,13 @@ export const commandDefinitions = [
     .setDescription('Muestra que compania/modelo de IA esta usando el bot ahora mismo y los tokens gastados'),
 
   new SlashCommandBuilder()
+    .setName('provider')
+    .setDescription('Muestra el estado detallado de cada proveedor de IA configurado (salud, cooldown, latencia)'),
+  // Igual que /modelstatus: de lectura, abierto a cualquiera. Reemplaza
+  // al viejo comando de texto !provider (services/../commands/provider.js
+  // queda deprecado, ver nota ahi).
+
+  new SlashCommandBuilder()
     .setName('forcetalk')
     .setDescription('El bot responde a cualquier mensaje, sin esperar el umbral normal')
     .addSubcommand(sc => sc.setName('activate').setDescription('Activa forcetalk'))

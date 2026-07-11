@@ -152,12 +152,27 @@ export function getAllSnapshots(names) {
 
 // ── Caché de proveedor activo ──────────────────────────────────────────
 // Mientras el proveedor activo siga sano, se reutiliza sin volver a
-// intentar los de mayor prioridad en cada mensaje.
+// intentar los de mayor prioridad en cada mensaje. PERO cada cierto
+// tiempo (RECHECK_INTERVAL_MS) se fuerza una revalidacion, para que un
+// proveedor de mayor prioridad que se recupero de un cooldown (o que
+// recien se configuro, ej: se agrego una API key nueva) vuelva a tener
+// chance de ser usado, en vez de quedar el bot pegado para siempre al
+// primer proveedor que funciono una vez.
+const RECHECK_INTERVAL_MS = 10 * 60 * 1000; // 10 min
+
 let activeProvider = null; // { name, model }
+let activeProviderSetAt = 0;
 
 export function getActiveProvider() {
   if (!activeProvider) return null;
   if (isOnCooldown(activeProvider.name)) {
+    activeProvider = null;
+    return null;
+  }
+  if (Date.now() - activeProviderSetAt > RECHECK_INTERVAL_MS) {
+    // No lo borramos de golpe (evita descartar un proveedor sano sin
+    // necesidad); resilientDispatcher.js igual va a intentar primero la
+    // cadena en orden de prioridad si devolvemos null aca.
     activeProvider = null;
     return null;
   }
@@ -166,10 +181,12 @@ export function getActiveProvider() {
 
 export function setActiveProvider(name, model) {
   activeProvider = { name, model };
+  activeProviderSetAt = Date.now();
 }
 
 export function clearActiveProvider() {
   activeProvider = null;
+  activeProviderSetAt = 0;
 }
 
 export default {

@@ -9,12 +9,14 @@
  * en todo el sistema.
  */
 export const PROVIDER_PRIORITY = [
-  'gemini',
+  'openrouter',
   'groq',
+  'cerebras',
+  'mistral',
+  'gemini',
+  'cohere',
   'openai',
   'anthropic',
-  'cerebras',
-  'openrouter',
   'huggingface',
 ];
 
@@ -51,6 +53,14 @@ export const MODEL_LADDERS = {
   ],
   huggingface: [
     'meta-llama/Llama-3.3-70B-Instruct',
+  ],
+  mistral: [
+    'mistral-large-latest',
+    'mistral-small-latest',
+  ],
+  cohere: [
+    'command-r-plus-08-2024',
+    'command-r-08-2024',
   ],
 };
 
