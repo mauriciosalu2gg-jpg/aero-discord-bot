@@ -28,7 +28,8 @@ export async function handleFunadorCommand(interaction) {
       return true;
     }
     const targetUser = interaction.options.getUser('objetivo');
-    await startFunadorSession(interaction, targetUser);
+    const razon = interaction.options.getString('razon');
+    await startFunadorSession(interaction, targetUser, razon);
     return true;
   }
 

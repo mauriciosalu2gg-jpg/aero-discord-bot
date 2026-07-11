@@ -9,12 +9,16 @@ import { handleModerationCommand } from './handlers/moderationHandler.js';
 import { handleModelStatusCommand } from './handlers/modelStatusHandler.js';
 import { handleResetMemoryCommand } from './handlers/resetMemoryHandler.js';
 import { handleFunadorCommand } from './handlers/funadorHandler.js';
+import { handleObjecionCommand } from './handlers/objecionHandler.js';
 
 const TOGGLE_COMMANDS = new Set(['ambient-mode', 'forcetalk', 'security']);
 
 // /modelstatus es de lectura, abierto a cualquiera (igual que el viejo
-// /fluxerstatus / !provider). El resto son exclusivos de Lara/Gio.
-const OPEN_COMMANDS = new Set(['modelstatus']);
+// /fluxerstatus / !provider). /objecion tambien es abierto: lo valida
+// registerObjection() en funadorSession.js contra los abogados reales de
+// la sesion activa, no depende de ser Lara/Gio. El resto son exclusivos
+// de Lara/Gio.
+const OPEN_COMMANDS = new Set(['modelstatus', 'objecion']);
 
 export async function handleInteraction(interaction) {
   if (!interaction.isChatInputCommand()) return;
@@ -45,6 +49,10 @@ export async function handleInteraction(interaction) {
     }
     if (commandName === 'funador') {
       await handleFunadorCommand(interaction);
+      return;
+    }
+    if (commandName === 'objecion') {
+      await handleObjecionCommand(interaction);
       return;
     }
   } catch (err) {

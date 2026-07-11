@@ -6,11 +6,13 @@
 // y solo si el acusado dijo que si se sigue.
 //
 // Etapas: consentimiento -> ambos bandos pueden tagear "abogados" (20s c/u,
-// tope 3 por bando) -> ventana de testigos (45s, tope 4 por bando, clasificados
-// dinamicamente por la IA segun el historial) -> apertura + fiscalia ->
-// interrogatorio real al acusado (2 rondas) -> interrogatorio a testigos
-// (2 rondas c/u) -> interrogatorio a abogados de ambos bandos (2 rondas c/u)
-// -> testimonio final del acusador -> contra-argumento -> deliberacion ->
+// tope 3 por bando) -> ventana de testigos (45s, tope 4 por bando, votable
+// para saltar, clasificados dinamicamente por la IA segun el historial) ->
+// apertura + fiscalia (con contexto de los ultimos 10 min de chat) ->
+// interrogatorio real al acusado (3 rondas) -> interrogatorio a testigos
+// (3 rondas c/u) -> interrogatorio a abogados de ambos bandos (3 rondas
+// c/u, interrumpible con /objecion) -> testimonio final del acusador ->
+// alegatos finales de ambos bandos -> contra-argumento -> deliberacion ->
 // veredicto, donde la IA clasifica dinamicamente si cada participante jugo
 // a favor o en contra del acusado (segun lo que dijeron, no segun su "rol")
 // y decide un ganador. Nada de esto es real: no hay sanciones, no se guarda
@@ -44,6 +46,60 @@ const STYLE_RULES =
 
 // channelId -> true mientras hay una sesion en curso (evita solapar bits)
 const activeSessions = new Set();
+
+// channelId -> { targetId, initiatorId, defenseLawyerIds:Set, accuserLawyerIds:Set }
+// Se llena en cuanto se conocen los abogados de cada bando, y se borra al
+// terminar la sesion. Lo usa /objecion para validar quien puede objetar y
+// contra que bando, sin tener que ser Lara/Gio.
+const sessionRoles = new Map();
+
+// channelId -> Array de objeciones pendientes de aplicar en la proxima
+// narracion de la IA (se consumen y limpian solas despues de usarse).
+const pendingObjections = new Map();
+
+export function getSessionRoles(channelId) {
+  return sessionRoles.get(channelId) || null;
+}
+
+// Valida y registra una objecion. Reglas:
+// - Solo se puede usar mientras hay una sesion activa en ESE canal.
+// - Solo la puede usar un abogado (de cualquiera de los dos bandos)
+//   registrado en esa sesion -- no el acusado, no el acusador, no testigos,
+//   no gente random del canal.
+// - No se puede "objetar" a tu propio bando (un abogado defensor no puede
+//   objetar a otro abogado defensor, por ejemplo), solo al bando contrario
+//   o a un testigo/testimonio neutral.
+// - Maximo 1 objecion "activa" en cola por canal a la vez, para que no se
+//   spammee /objecion en cadena y trabe la narracion.
+// Devuelve { ok: true } o { ok: false, reason: string } para que el handler
+// del comando responda apropiadamente.
+export function registerObjection(channelId, userId, motivo) {
+  const roles = sessionRoles.get(channelId);
+  if (!roles) return { ok: false, reason: 'no hay ningun juicio activo en este canal ahora mismo.' };
+
+  const isDefense = roles.defenseLawyerIds.has(userId);
+  const isAccuserSide = roles.accuserLawyerIds.has(userId);
+  if (!isDefense && !isAccuserSide) {
+    return { ok: false, reason: 'solo los abogados registrados en este juicio (de cualquiera de los dos bandos) pueden usar /objecion.' };
+  }
+
+  const queue = pendingObjections.get(channelId) || [];
+  if (queue.length >= 1) {
+    return { ok: false, reason: 'ya hay una objecion esperando a ser resuelta, aguantate a que se procese esa primero.' };
+  }
+
+  queue.push({ userId, side: isDefense ? 'defensa' : 'acusacion', motivo: motivo?.trim() || '(sin motivo especificado)' });
+  pendingObjections.set(channelId, queue);
+  return { ok: true, side: isDefense ? 'defensa' : 'acusacion' };
+}
+
+// Saca (y limpia) las objeciones pendientes de un canal, para que la
+// narracion de la IA las tenga en cuenta una sola vez.
+function consumeObjections(channelId) {
+  const queue = pendingObjections.get(channelId) || [];
+  pendingObjections.delete(channelId);
+  return queue;
+}
 
 // channelId -> Set(userId) de personas cuya PROXIMA respuesta en el canal
 // es para el juicio, no para charla normal con la IA. index.js la consulta.
@@ -170,32 +226,84 @@ async function askAndWait(channel, userId, question, timeMs = ANSWER_TIMEOUT_MS,
   }
 }
 
-// Interrogatorio de 1 o 2 rondas reutilizable para acusado/testigos/abogados.
-async function interrogate(channel, guild, personId, personMention, targetMention, initialQuestion, roleLabel, rounds = 2) {
+// Interrogatorio de 1 a 3 rondas reutilizable para acusado/testigos/abogados.
+// Antes de cada ronda, si hay una /objecion pendiente en el canal, la
+// consume, la narra como interrupcion y le da a la persona interrogada
+// unos segundos extra antes de seguir (asi la objecion se "siente" en
+// vivo, no queda flotando sin efecto).
+//
+// Ahora son hasta 3 rondas (antes 2) para que el interrogatorio se sienta
+// mas extendido: pregunta inicial -> repregunta -> repregunta final mas
+// picante, cada una generada en base a lo que la persona ya respondio
+// (nunca la misma pregunta generica repetida).
+async function interrogate(channel, guild, personId, personMention, targetMention, initialQuestion, roleLabel, rounds = 3) {
+  await resolveAnyPendingObjection(channel, guild, targetMention);
+
   const a1 = await askAndWait(channel, personId, initialQuestion);
   if (!a1) return null;
   if (rounds < 2) return a1;
 
-  const followUp = await generateFollowUp(guild, channel.name, roleLabel, a1, targetMention);
-  const a2 = await askAndWait(channel, personId, `${personMention}, ${followUp}`);
-  return [a1, a2].filter(Boolean).join(' / ');
+  await resolveAnyPendingObjection(channel, guild, targetMention);
+
+  const followUp1 = await generateFollowUp(guild, channel.name, roleLabel, a1, targetMention, 1);
+  const a2 = await askAndWait(channel, personId, `${personMention}, ${followUp1}`);
+  if (!a2 || rounds < 3) return [a1, a2].filter(Boolean).join(' / ');
+
+  await resolveAnyPendingObjection(channel, guild, targetMention);
+
+  const followUp2 = await generateFollowUp(guild, channel.name, roleLabel, `${a1} ${a2}`, targetMention, 2);
+  const a3 = await askAndWait(channel, personId, `${personMention}, ${followUp2}`);
+  return [a1, a2, a3].filter(Boolean).join(' / ');
 }
 
-// Le pide a la IA una repregunta corta y picante (pero amistosa) basada en
-// lo que la persona acaba de responder, para que el interrogatorio se
-// sienta vivo en vez de siempre la misma pregunta generica.
-async function generateFollowUp(guild, channelName, roleLabel, previousAnswer, targetMention) {
+// Si hay una objecion en cola para este canal, la saca de la cola, la narra
+// con la IA (tipo interrupcion de sala de audiencia) y sigue. No detiene el
+// interrogatorio, solo lo interrumpe un momento -- es un efecto narrativo,
+// no cambia quien tiene el turno de hablar.
+async function resolveAnyPendingObjection(channel, guild, targetMention) {
+  const queue = consumeObjections(channel.id);
+  if (!queue.length) return;
+
+  for (const obj of queue) {
+    const objMention = `<@${obj.userId}>`;
+    const prompt =
+      `Estas narrando un juicio de mentira contra ${targetMention}. Un abogado de la ${obj.side} ` +
+      `(${objMention}) acaba de gritar "💪 OBJECION" con este motivo: "${obj.motivo}". ` +
+      `Narra en 1-2 lineas como reacciona la sala a esa objecion (con humor, sin resolverla de forma seria, ` +
+      `es solo un momento dramatico de comedia). ${STYLE_RULES}`;
+    const resp = await askAI([{ role: 'user', content: prompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
+    await pause(channel, 800);
+    await channel.send(`💪 **${objMention} OBJECION!**\n${resp?.text?.trim() || 'la sala queda en silencio un segundo...'}`);
+  }
+}
+
+// Le pide a la IA una repregunta corta basada en lo que la persona acaba
+// de responder, para que el interrogatorio se sienta vivo en vez de
+// siempre la misma pregunta generica. `intensity` 1 = repregunta normal
+// que pide elaborar; 2 = repregunta final, mas picante/comprometedora,
+// como el "golpe de gracia" del interrogatorio.
+async function generateFollowUp(guild, channelName, roleLabel, previousAnswer, targetMention, intensity = 1) {
+  const intensityInstruction = intensity >= 2
+    ? 'Esta es la ULTIMA repregunta de la ronda, asi que hacela mas picante y comprometedora que la anterior, buscando la contradiccion o el punto flojo de lo que dijo.'
+    : 'Hacela para que elabore mas o quede en un aprieto gracioso, sin ser la mas fuerte todavia (guardate algo para despues).';
   const prompt =
     `Estas narrando un juicio de mentira, tipo juego, contra ${targetMention}. ` +
     `El/la ${roleLabel} acaba de responder esto: "${previousAnswer}". ` +
-    `Escribi UNA sola repregunta corta (maximo 2 lineas) que lo/la haga elaborar mas o lo/la ponga ` +
-    `en aprietos de forma graciosa. ${STYLE_RULES} Responde SOLO con la pregunta, nada mas.`;
+    `Escribi UNA sola repregunta corta (maximo 2 lineas). ${intensityInstruction} ${STYLE_RULES} Responde SOLO con la pregunta, nada mas.`;
 
   const response = await askAI([{ role: 'user', content: prompt }], 0, { guild, channelName, swearingAllowed: false }).catch(() => null);
   return response?.text?.trim() || '¿algo mas que quieras agregar antes de que sigamos?';
 }
 
 async function sendInParts(channel, text) {
+  // Un solo mensaje final en vez de 4 separados, para reducir ruido/pings.
+  // Discord corta en 2000 chars; si el veredicto entero entra, va todo
+  // junto. Si por algun motivo es mas largo, ahi si lo partimos.
+  const joined = text.split(SECTION_DELIM).map(p => p.trim()).filter(Boolean).join('\n\n');
+  if (joined.length <= 1900) {
+    await sendNarration(channel, joined);
+    return;
+  }
   const parts = text.split(SECTION_DELIM).map(p => p.trim()).filter(Boolean);
   for (const part of parts) {
     await pause(channel, 1800 + Math.random() * 1200);
@@ -252,12 +360,22 @@ async function collectLawyers(channel, personId, personMention, excludeIds, side
 async function classifyAndCapWitnesses(guild, channelName, targetMention, witnesses, recentText) {
   if (witnesses.length === 0) return { kept: [], leftOut: [] };
 
+  // Con un solo testigo no hace falta preguntarle nada a la IA (y evita
+  // el bug real: si la IA devuelve ese mismo <@id> en favor Y en contra,
+  // o repetido dentro del mismo array, el testigo terminaba contado 2-3
+  // veces y por lo tanto interrogado 2-3 veces seguidas en el paso 6).
+  // Con 1 testigo, lo mandamos directo a un bando por sorteo simple.
+  if (witnesses.length === 1) {
+    return { kept: [witnesses[0]], leftOut: [] };
+  }
+
   const witnessList = witnesses.map(w => `<@${w.id}>`).join(', ');
   const prompt =
     `Estas por armar un juicio de mentira contra ${targetMention}. Estas personas se anotaron ` +
     `como testigos: ${witnessList}. Basandote en este historial reciente del canal, decidi para ` +
     `cada una si probablemente va a jugar A FAVOR o EN CONTRA de ${targetMention} (si no hay pistas claras, ` +
-    `repartilos de forma pareja entre los dos bandos).\n\n` +
+    `repartilos de forma pareja entre los dos bandos). CADA PERSONA VA EN UN SOLO BANDO, NUNCA la repitas ` +
+    `en los dos arrays ni la pongas dos veces en el mismo array.\n\n` +
     `Historial:\n${recentText || '(sin historial relevante, reparti parejo)'}\n\n` +
     `Responde SOLO con JSON valido, sin texto extra, con este formato exacto: ` +
     `{"favor": ["<@id>", ...], "contra": ["<@id>", ...]}`;
@@ -278,14 +396,33 @@ async function classifyAndCapWitnesses(guild, channelName, targetMention, witnes
     });
   }
 
+  // Dedupe DURO: cada persona entra UNA sola vez, sin importar si la IA
+  // la repitio dentro del mismo array o la puso en los dos arrays a la
+  // vez (favor tiene prioridad si aparece en ambos). Esto es lo que
+  // evitaba que un testigo terminara interrogado varias veces seguidas.
+  const seenIds = new Set();
   const byMention = new Map(witnesses.map(w => [`<@${w.id}>`, w]));
-  const favorUsers = favorIds.map(m => byMention.get(m)).filter(Boolean);
-  const contraUsers = contraIds.map(m => byMention.get(m)).filter(Boolean);
+
+  const favorUsers = [];
+  for (const m of favorIds) {
+    const u = byMention.get(m);
+    if (!u || seenIds.has(u.id)) continue;
+    seenIds.add(u.id);
+    favorUsers.push(u);
+  }
+
+  const contraUsers = [];
+  for (const m of contraIds) {
+    const u = byMention.get(m);
+    if (!u || seenIds.has(u.id)) continue;
+    seenIds.add(u.id);
+    contraUsers.push(u);
+  }
 
   // por si la IA se olvido de alguien, lo mandamos al bando mas corto
-  const classifiedIds = new Set([...favorUsers, ...contraUsers].map(u => u.id));
   for (const w of witnesses) {
-    if (classifiedIds.has(w.id)) continue;
+    if (seenIds.has(w.id)) continue;
+    seenIds.add(w.id);
     (favorUsers.length <= contraUsers.length ? favorUsers : contraUsers).push(w);
   }
 
@@ -296,7 +433,39 @@ async function classifyAndCapWitnesses(guild, channelName, targetMention, witnes
   return { kept, leftOut };
 }
 
-export async function startFunadorSession(interaction, targetUser) {
+// Espera `waitMs` pero permite cortarla antes si TODOS los "votantes"
+// (abogados de ambos bandos + acusado + acusador, los que existan)
+// reaccionan con 🕐 pidiendo saltarla. Si no hay votantes definidos (nadie
+// para votar todavia, ej. antes de que se sepa quien es abogado), simplemente
+// espera el tiempo completo.
+async function waitOrSkipByVote(channel, waitMs, voterIds, skipLabel) {
+  if (!voterIds || voterIds.size === 0) {
+    await new Promise(r => setTimeout(r, waitMs));
+    return;
+  }
+
+  const voteMsg = await channel.send(
+    `⏱️ ${skipLabel} (${Math.round(waitMs / 1000)}s). Si TODOS los involucrados (abogados de ambos lados, acusado y acusador) reaccionan con 🕐, saltamos el tiempo restante.`
+  );
+  await voteMsg.react('🕐');
+
+  const start = Date.now();
+  const pollMs = 2000;
+  while (Date.now() - start < waitMs) {
+    await new Promise(r => setTimeout(r, pollMs));
+    const reaction = voteMsg.reactions.cache.get('⏰') || voteMsg.reactions.cache.get('🕐');
+    if (!reaction) continue;
+    const voted = await reaction.users.fetch().catch(() => new Map());
+    const votedIds = new Set([...voted.values()].filter(u => !u.bot).map(u => u.id));
+    const allVoted = [...voterIds].every(id => votedIds.has(id));
+    if (allVoted) {
+      await channel.send('todos votaron saltar, seguimos ⏩').catch(() => {});
+      return;
+    }
+  }
+}
+
+export async function startFunadorSession(interaction, targetUser, razon = null) {
   const channel = interaction.channel;
   const guild = interaction.guild;
   const channelId = channel.id;
@@ -317,20 +486,27 @@ export async function startFunadorSession(interaction, targetUser) {
 
   try {
     // ── 0. Fetchea historial reciente y arma contexto inicial ────────────
-    const rawHistory = await fetchRecentChannelHistory(channel, HISTORY_LOOKBACK_MS);
-    const historyText = rawHistory
-      .map(m => `${m.author}: ${m.content}`)
-      .join('\n');
+    const razonLimpia = razon?.trim() || null;
+    let juicioContext;
 
-    const contextPrompt =
-      `Estas por armar un juicio de mentira contra ${targetMention}. Estos son los ultimos 10 minutos de chat:\n\n${historyText || '(sin historial reciente)'}\n\n` +
-      `Resume brevemente (max 2-3 lineas) que tipo de acusaciones podrian hacerle a ${targetMention} basandote SOLO en lo que ves arriba. ` +
-      `Si no hay casi nada, simplemente di "sin contexto especifico".`;
-    const contextResp = await askAI([{ role: 'user', content: contextPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
-    const juicioContext = contextResp?.text?.trim() || 'sin contexto especifico';
+    if (razonLimpia) {
+      juicioContext = razonLimpia;
+    } else {
+      const rawHistory = await fetchRecentChannelHistory(channel, HISTORY_LOOKBACK_MS);
+      const historyText = rawHistory
+        .map(m => `${m.author}: ${m.content}`)
+        .join('\n');
+
+      const contextPrompt =
+        `Estas por armar un juicio de mentira contra ${targetMention}. Estos son los ultimos 10 minutos de chat:\n\n${historyText || '(sin historial reciente)'}\n\n` +
+        `Resume brevemente (max 2-3 lineas) que tipo de acusaciones podrian hacerle a ${targetMention} basandote SOLO en lo que ves arriba. ` +
+        `Si no hay casi nada, simplemente di "sin contexto especifico".`;
+      const contextResp = await askAI([{ role: 'user', content: contextPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
+      juicioContext = contextResp?.text?.trim() || 'sin contexto especifico';
+    }
 
     // ── 1. Consentimiento del acusado, obligatorio ──────────────────────
-    const consentMsg = await channel.send(buildConsentPrompt(initiatorMention, targetMention));
+    const consentMsg = await channel.send(buildConsentPrompt(initiatorMention, targetMention, razonLimpia));
     await consentMsg.react('✅');
     await consentMsg.react('❌');
 
@@ -355,14 +531,23 @@ export async function startFunadorSession(interaction, targetUser) {
     const lawyerMentions = lawyerUsers.map(u => `<@${u.id}>`);
 
     await pause(channel, 1000);
-    await sendNarration(channel, lawyerMentions.length ? `defensa anotada: ${lawyerMentions.join(', ')} ⚖️` : 'sin abogados, se defiende solo/a 💪');
+    // (el aviso individual de "defensa anotada" ahora va en el resumen unico del paso 4, para no re-pingear)
 
     const excludeForAccuser = new Set([interaction.user.id, targetUser.id, ...lawyerUsers.map(u => u.id)]);
     const accuserLawyerUsers = await collectLawyers(channel, interaction.user.id, initiatorMention, excludeForAccuser, 'para tu lado (acusacion)');
     const accuserLawyerMentions = accuserLawyerUsers.map(u => `<@${u.id}>`);
 
+    // Registra roles para que /objecion sepa quien puede objetar y a quien,
+    // desde este punto en adelante (recien ahora se conocen los abogados).
+    sessionRoles.set(channelId, {
+      targetId: targetUser.id,
+      initiatorId: interaction.user.id,
+      defenseLawyerIds: new Set(lawyerUsers.map(u => u.id)),
+      accuserLawyerIds: new Set(accuserLawyerUsers.map(u => u.id)),
+    });
+
     await pause(channel, 1000);
-    await sendNarration(channel, accuserLawyerMentions.length ? `apoyo de la acusacion anotado: ${accuserLawyerMentions.join(', ')} 📋` : `${initiatorMention} sigue solo/a con la acusacion, sin apoyo extra.`);
+    // (el aviso individual de "apoyo de la acusacion anotado" ahora va en el resumen unico del paso 4)
 
     // ── 3. Invitacion abierta a testigos, opcional, tope 4 por bando ─────
     const witnessMsg = await channel.send(
@@ -370,7 +555,8 @@ export async function startFunadorSession(interaction, targetUser) {
       `(opcional, nadie esta obligado, maximo ${MAX_WITNESSES_PER_SIDE} testigos por bando).`
     );
     await witnessMsg.react('🙋');
-    await new Promise(r => setTimeout(r, WITNESS_WINDOW_MS));
+    const witnessVoters = new Set([targetUser.id, interaction.user.id, ...lawyerUsers.map(u => u.id), ...accuserLawyerUsers.map(u => u.id)]);
+    await waitOrSkipByVote(channel, WITNESS_WINDOW_MS, witnessVoters, 'ventana de testigos abierta');
     const reactionUsers = witnessMsg.reactions.cache.get('🙋')
       ? await witnessMsg.reactions.cache.get('🙋').users.fetch().catch(() => new Map())
       : new Map();
@@ -388,18 +574,21 @@ export async function startFunadorSession(interaction, targetUser) {
     const witnessMentions = witnesses.map(w => `<@${w.id}>`);
 
     if (leftOut.length) {
-      await pause(channel, 900);
-      await channel.send(`ya se lleno el cupo de testigos por bando (max ${MAX_WITNESSES_PER_SIDE} c/u), asi que ${leftOut.map(w => `<@${w.id}>`).join(', ')} se quedan afuera esta vez 🙏`);
+      // aviso incluido en el resumen unico del paso 4, no como mensaje aparte
     }
 
-    // ── 4. Apertura + fiscalia inicial, narradas ─────────────────────────
+    // ── 4. Apertura + roles, TODO en un solo mensaje resumen ─────────────
+    // (antes se mandaban 4 mensajes separados re-pingeando gente; ahora es
+    // un solo resumen con todos los roles y menciones agrupadas).
     await pause(channel, 1500);
-    await sendNarration(channel,
-      `⚖️ **Se abre la sesion.** ${initiatorMention} pidio este juicio de mentira contra ${targetMention}.` +
-      (lawyerMentions.length ? ` Defensa: ${lawyerMentions.join(', ')}.` : '') +
-      (accuserLawyerMentions.length ? ` Apoyo de la acusacion: ${accuserLawyerMentions.join(', ')}.` : '') +
-      (witnessMentions.length ? ` Testigos: ${witnessMentions.join(', ')}.` : witnessMentions.length === 0 && !lawyerMentions.length && !accuserLawyerMentions.length ? ' Mano a mano, sin apoyo de ningun lado.' : '')
-    );
+    const rolesSummary = [
+      `⚖️ **Se abre la sesion.** ${initiatorMention} pidio este juicio de mentira contra ${targetMention}.`,
+      lawyerMentions.length ? `🛡️ Defensa: ${lawyerMentions.join(', ')}` : '🛡️ Defensa: nadie, se defiende solo/a',
+      accuserLawyerMentions.length ? `📋 Apoyo de la acusacion: ${accuserLawyerMentions.join(', ')}` : '📋 Apoyo de la acusacion: nadie mas',
+      witnessMentions.length ? `🙋 Testigos: ${witnessMentions.join(', ')}` : '🙋 Testigos: ninguno se sumo',
+      leftOut.length ? `🙏 Se quedaron afuera por cupo lleno: ${leftOut.map(w => `<@${w.id}>`).join(', ')}` : null,
+    ].filter(Boolean).join('\n');
+    await channel.send({ content: rolesSummary, allowedMentions: { users: [...new Set([targetUser.id, interaction.user.id, ...lawyerUsers.map(u => u.id), ...accuserLawyerUsers.map(u => u.id), ...witnesses.map(u => u.id)])] } });
 
     const fiscaliaPrompt =
       `Estas narrando la apertura de la fiscalia en un juicio de mentira contra ${targetMention}, ` +
@@ -412,7 +601,7 @@ export async function startFunadorSession(interaction, targetUser) {
     await pause(channel, 1500);
     await sendNarration(channel, fiscaliaResp?.text?.trim() || `La fiscalia dice que ${targetMention} tiene mucho que explicar hoy.`);
 
-    // ── 5. Interrogatorio al acusado: 2 rondas reales ────────────────────
+    // ── 5. Interrogatorio al acusado: 3 rondas reales ────────────────────
     await pause(channel, 1500);
     await channel.send(`🎤 Turno de la defensa. ${targetMention}, empecemos.`);
     const defenseText = await interrogate(
@@ -425,9 +614,17 @@ export async function startFunadorSession(interaction, targetUser) {
       await channel.send(`${targetMention} se quedo callado, no presento defensa... eso no pinta bien 👀`);
     }
 
-    // ── 6. Interrogatorio a testigos (si hay): 2 rondas c/u ──────────────
+    // ── 6. Interrogatorio a testigos (si hay): 3 rondas c/u ──────────────
+    // Dedupe extra de seguridad: nunca interrogar dos veces a la misma
+    // persona, sin importar de donde venga el duplicado.
+    const seenWitnessIds = new Set();
+    const uniqueWitnesses = witnesses.filter(w => {
+      if (seenWitnessIds.has(w.id)) return false;
+      seenWitnessIds.add(w.id);
+      return true;
+    });
     const testimonies = [];
-    for (const witness of witnesses) {
+    for (const witness of uniqueWitnesses) {
       const wMention = `<@${witness.id}>`;
       await pause(channel, 1200);
       await channel.send(`🎤 ${wMention}, tu turno de testigo.`);
@@ -438,12 +635,12 @@ export async function startFunadorSession(interaction, targetUser) {
       );
       if (t) testimonies.push({ mention: wMention, role: 'testigo', text: t });
     }
-    if (witnesses.length) {
+    if (uniqueWitnesses.length) {
       await pause(channel, 1000);
       await channel.send(testimonies.some(t => t.role === 'testigo') ? 'testimonios de testigos recibidos ✍️' : 'nadie declaro nada al final, seguimos igual 🤷');
     }
 
-    // ── 7. Interrogatorio a los abogados de AMBOS bandos: 2 rondas c/u ───
+    // ── 7. Interrogatorio a los abogados de AMBOS bandos: 3 rondas c/u ───
     for (const lawyer of lawyerUsers) {
       const lMention = `<@${lawyer.id}>`;
       await pause(channel, 1200);
@@ -477,6 +674,34 @@ export async function startFunadorSession(interaction, targetUser) {
     );
     if (accuserTestimony) testimonies.push({ mention: initiatorMention, role: 'acusador', text: accuserTestimony });
 
+    // ── 8.5. Alegatos finales de ambos bandos, si hubo alguien defendiendo
+    // a cada lado -- son mensajes narrados de cierre, sin volver a
+    // preguntarle nada a nadie, para darle mas cuerpo al juicio antes
+    // del contra-argumento/veredicto sin alargar de mas la espera real.
+    if (lawyerMentions.length || testimonies.some(t => t.role === 'testigo')) {
+      const closingDefensePrompt =
+        `Estas narrando el alegato final de la DEFENSA de ${targetMention} en un juicio de mentira. ` +
+        `Defensa dada por ${targetMention}: ${defenseText || '(no presento defensa)'}\n` +
+        `Declaraciones a favor: ${testimonies.filter(t => t.role !== 'acusador' && t.role !== 'abogado de la acusacion').map(t => `${t.mention}: ${t.text}`).join(' | ') || '(ninguna)'}\n` +
+        `Escribi 2-3 lineas resumiendo por que ${targetMention} deberia salir bien parado de esto, con humor. ${STYLE_RULES}`;
+      const closingDefenseResp = await askAI([{ role: 'user', content: closingDefensePrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
+      await pause(channel, 1500);
+      await sendNarration(channel, `📚 **Alegato final de la defensa:**\n${closingDefenseResp?.text?.trim() || `${targetMention} no la tuvo facil, pero dio pelea.`}`);
+    }
+
+    // El alegato de la acusacion siempre se narra (siempre hay un
+    // acusador, con o sin abogados extra de su lado).
+    {
+      const closingAccusationPrompt =
+        `Estas narrando el alegato final de la ACUSACION contra ${targetMention} en un juicio de mentira. ` +
+        `Testimonio del acusador: ${accuserTestimony || '(no agrego nada nuevo)'}\n` +
+        `Declaraciones en contra: ${testimonies.filter(t => t.role === 'abogado de la acusacion' || t.role === 'acusador').map(t => `${t.mention}: ${t.text}`).join(' | ') || '(ninguna)'}\n` +
+        `Escribi 2-3 lineas resumiendo por que ${targetMention} deberia ser encontrado culpable, con humor. ${STYLE_RULES}`;
+      const closingAccusationResp = await askAI([{ role: 'user', content: closingAccusationPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
+      await pause(channel, 1500);
+      await sendNarration(channel, `📜 **Alegato final de la acusacion:**\n${closingAccusationResp?.text?.trim() || `la acusacion no va a soltar esto tan facil.`}`);
+    }
+
     // ── 9. Contra-argumento narrado ───────────────────────────────────────
     await pause(channel, 1800);
     const testimoniesBlock = testimonies.length
@@ -503,12 +728,11 @@ export async function startFunadorSession(interaction, targetUser) {
       `Defensa de ${targetMention}: ${defenseText || '(no presento defensa)'}\n` +
       `Declaraciones de otros: ${testimoniesBlock}\n` +
       `Historial reciente del canal:\n${recentText || '(sin historial relevante)'}\n\n` +
-      `Estructura tu respuesta en EXACTAMENTE 4 partes separadas por la marca ${SECTION_DELIM} (sin numerarlas, sin titulos, cada parte de maximo 3 lineas):\n` +
-      `1) Quien jugo a favor y quien en contra de ${targetMention}, y por que (segun lo que dijeron).\n` +
-      `2) Si la defensa de ${targetMention} se sostuvo o no frente a todo eso.\n` +
-      `3) Que tan cerrado o aplastante fue el resultado, con humor.\n` +
-      `4) El veredicto final gracioso y liviano (tipo "culpable/inocente de [algo tierno/gracioso, ej: ser un migajero]"), sin sanciones reales, dejando claro que fue un juego. ${STYLE_RULES}`;
-
+      `Estructura tu respuesta en EXACTAMENTE 4 partes separadas por la marca ${SECTION_DELIM} (sin numerarlas, cada parte de maximo 3 lineas):\n` +
+      `1) **Analisis:** quien jugo a favor y quien en contra de ${targetMention}, y por que (segun lo que dijeron).\n` +
+      `2) **Defensa:** si la defensa de ${targetMention} se sostuvo o no frente a todo eso.\n` +
+      `3) **Resultado:** que tan cerrado o aplastante fue, con humor.\n` +
+      `4) Empeza esta parte con la linea exacta "🏛️ **VEREDICTO FINAL**" y despues el veredicto gracioso y liviano (tipo "culpable/inocente de [algo tierno/gracioso, ej: ser un migajero]"), sin sanciones reales, dejando claro que fue un juego. ${STYLE_RULES}`;
     let veredictoResp = await askAI([{ role: 'user', content: veredictoPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
 
     // Si fallo o vino vacio, reintentamos UNA vez antes de rendirnos, para
@@ -531,7 +755,9 @@ export async function startFunadorSession(interaction, targetUser) {
   } finally {
     activeSessions.delete(channelId);
     pendingAnswers.delete(channelId);
+    sessionRoles.delete(channelId);
+    pendingObjections.delete(channelId);
   }
 }
 
-export default { startFunadorSession, isPendingFunadorAnswer };
+export default { startFunadorSession, isPendingFunadorAnswer, registerObjection, getSessionRoles };

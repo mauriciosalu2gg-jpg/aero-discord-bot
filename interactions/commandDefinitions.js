@@ -47,8 +47,21 @@ export const commandDefinitions = [
     .addSubcommand(sc => sc
       .setName('start')
       .setDescription('Arranca un "juicio" en broma, pidiendo permiso al acusado primero')
-      .addUserOption(opt => opt.setName('objetivo').setDescription('A quien le vamos a hacer el juicio de mentira').setRequired(true)))
+      .addUserOption(opt => opt.setName('objetivo').setDescription('A quien le vamos a hacer el juicio de mentira').setRequired(true))
+      .addStringOption(opt => opt.setName('razon').setDescription('De que se le acusa / tema del juicio (opcional, si no se pone se infiere del chat reciente)').setRequired(false)))
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+  new SlashCommandBuilder()
+    .setName('objecion')
+    .setDescription('💪 OBJECION: solo abogados registrados en un /funador activo pueden usarlo, en cualquier momento del interrogatorio')
+    .addStringOption(opt => opt.setName('motivo').setDescription('Por que estas objetando (opcional, corto)').setRequired(false)),
+  // Sin setDefaultMemberPermissions(Administrator) a proposito: este
+  // comando NO es exclusivo de Lara/Gio. Cualquier persona que haya sido
+  // registrada como abogado (de cualquiera de los dos bandos) en la sesion
+  // de /funador activa en ese canal puede usarlo. La validacion real pasa
+  // por registerObjection() en core/funadorSession.js, consultando
+  // sessionRoles -- interactionCreate.js deja pasar 'objecion' sin el
+  // chequeo generico de isCreatorOrSubCreator.
 
   new SlashCommandBuilder()
     .setName('resetmemory')
