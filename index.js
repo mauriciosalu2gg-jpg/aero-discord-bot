@@ -18,6 +18,7 @@ import { getFlags, matchesStopPhrase, matchesResumePhrase, setFlag, hydrateFlags
 import { markActivity, startIdleWatcher } from './core/idleFacts.js';
 import { isModerationActive, messageViolatesRespect, registerViolationAndGetSanction, hydrateModerationFlags, hydrateStrikes } from './core/moderationEngine.js';
 import { handleInteraction } from './interactions/interactionCreate.js';
+import { isPendingFunadorAnswer } from './core/funadorSession.js';
 import { handleApiKeyQuestion } from './commands/apikey.js';
 import { getActiveProvider } from './services/ai/providerHealth.js';
 import { isBasicModel } from './config/providers.js';
@@ -155,6 +156,15 @@ client.on('messageCreate', async (message) => {
   // le hablan al bot), para que el reloj de inactividad sea real.
   trackedChannels.set(channelId, { guildId });
   markActivity(channelId);
+
+  // Si este mensaje es la respuesta que un /funador en curso esta
+  // esperando de esta persona (consentimiento, abogados, interrogatorio,
+  // etc), NO debe pasar a moderacion ni a la IA normal: funadorSession.js
+  // ya lo esta escuchando con su propio awaitMessages/awaitReactions.
+  // Sin este corte, el boton "Responder" de Discord (que menciona
+  // implicitamente al bot) disparaba ADEMAS una respuesta de charla
+  // normal, pisando el flujo del juicio.
+  if (isPendingFunadorAnswer(channelId, message.author.id)) return;
 
   // Moderacion automatica: corre siempre que este activa, sin importar si
   // le hablan al bot o no.
