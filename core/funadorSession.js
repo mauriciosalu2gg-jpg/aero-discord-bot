@@ -118,9 +118,13 @@ function unmarkPending(channelId, userId) {
   pendingAnswers.get(channelId)?.delete(userId);
 }
 
-function buildConsentPrompt(initiatorMention, targetMention) {
+function buildConsentPrompt(initiatorMention, targetMention, razon = null) {
+  const temaLine = razon
+    ? `El tema del juicio va a ser: "${razon}"\n`
+    : '';
   return (
     `${targetMention}, ${initiatorMention} quiere armarte un "juicio" de mentira, todo en joda 🎭\n` +
+    temaLine +
     `Nada de esto es en serio, es solo un bit divertido con lo que ya se hablo en el canal.\n` +
     `¿Te copa jugar? Reacciona con ✅ si queres, o con ❌ si mejor no.`
   );
@@ -583,6 +587,7 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
     await pause(channel, 1500);
     const rolesSummary = [
       `⚖️ **Se abre la sesion.** ${initiatorMention} pidio este juicio de mentira contra ${targetMention}.`,
+      `📄 Tema: ${juicioContext}`,
       lawyerMentions.length ? `🛡️ Defensa: ${lawyerMentions.join(', ')}` : '🛡️ Defensa: nadie, se defiende solo/a',
       accuserLawyerMentions.length ? `📋 Apoyo de la acusacion: ${accuserLawyerMentions.join(', ')}` : '📋 Apoyo de la acusacion: nadie mas',
       witnessMentions.length ? `🙋 Testigos: ${witnessMentions.join(', ')}` : '🙋 Testigos: ninguno se sumo',
@@ -593,10 +598,10 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
     const fiscaliaPrompt =
       `Estas narrando la apertura de la fiscalia en un juicio de mentira contra ${targetMention}, ` +
       `un juego que ${targetMention} acepto jugar despues de que ${initiatorMention} lo propuso. ` +
-      `Usa SOLO lo que aparece en este historial reciente del canal (no inventes acusaciones nuevas). ` +
-      `Contexto previo: ${juicioContext}\n` +
+      `Usa SOLO lo que aparece en este historial reciente del canal, y sobre todo el tema/razon dado (no inventes acusaciones nuevas fuera de eso). ` +
+      `TEMA DEL JUICIO (el eje de todo): ${juicioContext}\n` +
       `${STYLE_RULES}\n\n` +
-      `Historial:\n${recentText || '(casi no hay historial, improvisa algo liviano sin inventar acusaciones concretas)'}`;
+      `Historial:\n${recentText || '(casi no hay historial, quedate con el tema dado arriba)'}`;
     const fiscaliaResp = await askAI([{ role: 'user', content: fiscaliaPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
     await pause(channel, 1500);
     await sendNarration(channel, fiscaliaResp?.text?.trim() || `La fiscalia dice que ${targetMention} tiene mucho que explicar hoy.`);
@@ -725,6 +730,7 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
       `abogado (de cualquiera de los dos bandos) o acusador -- juzga por lo que REALMENTE dijeron, no por su rol o etiqueta ` +
       `(un "abogado defensor" que dijo algo que perjudica a ${targetMention} cuenta en contra, y un "testigo" que lo defendio ` +
       `cuenta a favor).\n\n` +
+      `TEMA DEL JUICIO: ${juicioContext}\n` +
       `Defensa de ${targetMention}: ${defenseText || '(no presento defensa)'}\n` +
       `Declaraciones de otros: ${testimoniesBlock}\n` +
       `Historial reciente del canal:\n${recentText || '(sin historial relevante)'}\n\n` +
