@@ -55,6 +55,11 @@ const STYLE_RULES =
 // largo de la sesion.
 const HISTORY_CHAR_LIMIT = 1400;
 
+function formatDiscordTime(ms, label = '⏳ Tiempo estimado') {
+  const unix = Math.floor((Date.now() + ms) / 1000);
+  return `${label}: <t:${unix}:R> (Finaliza: <t:${unix}:F>)`;
+}
+
 // Recorta un bloque de texto (historial o testimonios ya unidos) a un
 // tope de caracteres, cortando por mensaje/entrada entera cuando se puede
 // en vez de a la mitad de una linea, para no mandar contexto trunco feo
@@ -141,14 +146,13 @@ function unmarkPending(channelId, userId) {
 }
 
 function buildConsentPrompt(initiatorMention, targetMention, razon = null) {
-  const temaLine = razon
-    ? `El tema del juicio va a ser: "${razon}"\n`
-    : '';
   return (
-    `${targetMention}, ${initiatorMention} quiere armarte un "juicio" de mentira, todo en joda 🎭\n` +
-    temaLine +
-    `Nada de esto es en serio, es solo un bit divertido con lo que ya se hablo en el canal.\n` +
-    `¿Te copa jugar? Reacciona con ✅ si queres, o con ❌ si mejor no.`
+    `⚖️ **Se propone un juicio de mentira.**\n` +
+    `${targetMention}, ${initiatorMention} quiere armarte este juego en joda.\n` +
+    `${razon ? `**Tema:** ${razon}\n` : ''}` +
+    `No es en serio: es solo un bit divertido con lo que ya se hablo en el canal.\n\n` +
+    `Si queres jugar, cliquea en **Acepto**.\n` +
+    `Si no queres, cliquea en **Paso**.`
   );
 }
 
@@ -269,7 +273,7 @@ async function fetchRecentChannelHistory(channel, lookbackMs = HISTORY_LOOKBACK_
 // ronda como si no hubiera contestado nada.
 async function askAndWait(channel, userId, question, timeMs = ANSWER_TIMEOUT_MS, allowExtension = true) {
   await pause(channel, 1300);
-  await channel.send(question);
+  await channel.send(`${question}\n${formatDiscordTime(timeMs)}`);
   markPending(channel.id, userId);
   try {
     const collected = await channel
@@ -279,7 +283,7 @@ async function askAndWait(channel, userId, question, timeMs = ANSWER_TIMEOUT_MS,
 
     if (text && asksForMoreTime(text) && allowExtension) {
       await pause(channel, 900);
-      await channel.send(`dale, tomate ${Math.round(timeMs / 1000)}s mas 🕐`);
+      await channel.send(formatDiscordTime(timeMs, '⏳ Tiempo extra'));
       unmarkPending(channel.id, userId);
       return askAndWait(channel, userId, `${question} (tiempo extendido)`, timeMs, false);
     }
@@ -385,7 +389,7 @@ async function sendInParts(channel, text) {
 async function collectLawyers(channel, personId, personMention, excludeIds, sideLabel, timeMs = LAWYERS_WINDOW_MS, allowExtension = true) {
   await pause(channel, 1200);
   await channel.send(
-    `${personMention}, tenes ${Math.round(timeMs / 1000)}s para etiquetar hasta ${MAX_LAWYERS_PER_SIDE} "abogados" ${sideLabel} si queres ayuda (mencionalos en un mensaje). Si no queres, dejalo pasar.`
+    `${personMention}, tenes esta ventana para etiquetar hasta ${MAX_LAWYERS_PER_SIDE} "abogados" ${sideLabel} si queres ayuda (mencionalos en un mensaje). Si no queres, dejalo pasar.\n${formatDiscordTime(timeMs)}`
   );
   markPending(channel.id, personId);
   const collected = await channel
@@ -401,7 +405,7 @@ async function collectLawyers(channel, personId, personMention, excludeIds, side
 
   if (mentioned.length === 0 && allowExtension && asksForMoreTime(firstMsg.content)) {
     await pause(channel, 900);
-    await channel.send(`dale, tomate ${Math.round(timeMs / 1000)}s mas 🕐`);
+    await channel.send(formatDiscordTime(timeMs, '⏳ Tiempo extra'));
     return collectLawyers(channel, personId, personMention, excludeIds, sideLabel, timeMs, false);
   }
 
@@ -421,8 +425,7 @@ async function collectWitnessVolunteers(channel, waitMs, excludedIds = new Set()
   const volunteers = new Map();
   const witnessMsg = await channel.send({
     content:
-      `🙋 ventana de testigos abierta (${Math.round(waitMs / 1000)}s). ` +
-      `Si alguien quiere sumarse, pulse el boton. Cupo maximo ${MAX_WITNESSES_PER_SIDE} por bando.`,
+      `🙋 ventana de testigos abierta. Si alguien quiere sumarse, pulse el boton. Cupo maximo ${MAX_WITNESSES_PER_SIDE} por bando.\n${formatDiscordTime(waitMs)}`,
     components: buildButtons([
       { id: `funador-witness:${channel.id}`, label: 'Quiero ser testigo', style: ButtonStyle.Primary },
     ]),
@@ -546,7 +549,7 @@ async function waitOrSkipByVote(channel, waitMs, voterIds, skipLabel, sharedStat
 
   const votedIds = new Set();
   const voteMsg = await channel.send({
-    content: `⏱️ ${skipLabel} (${Math.round(waitMs / 1000)}s). Si todos los involucrados pulsan "saltar", seguimos antes.`,
+    content: `⏱️ ${skipLabel}. Si todos los involucrados pulsan "saltar", seguimos antes.\n${formatDiscordTime(waitMs)}`,
     components: buildButtons([
       { id: `funador-skip:${channel.id}`, label: 'Saltar espera', style: ButtonStyle.Secondary },
     ]),
@@ -616,7 +619,7 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
   }
 
   activeSessions.add(channelId);
-  await sendAck({ content: `dale, le pregunto a ${targetMention} si quiere jugar`, ephemeral: false });
+  await sendAck({ content: 'arrancando el juicio...', ephemeral: false });
 
   try {
     // ── 0. Fetchea historial reciente y arma contexto inicial ────────────
@@ -723,7 +726,7 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
     await channel.send(`🎤 Turno de la defensa. ${targetMention}, empecemos.`);
     const defenseText = await interrogate(
       channel, guild, targetUser.id, targetMention, targetMention,
-      `${targetMention}, ¿que pruebas o defensa tenes para este juicio? Tenes ${ANSWER_TIMEOUT_MS / 1000}s.`,
+      `${targetMention}, ¿que pruebas o defensa tenes para este juicio?`,
       'acusado'
     );
     if (!defenseText) {
@@ -747,7 +750,7 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
       await channel.send(`🎤 ${wMention}, tu turno de testigo.`);
       const t = await interrogate(
         channel, guild, witness.id, wMention, targetMention,
-        `${wMention}, ¿que tenes para declarar sobre ${targetMention}? Tenes ${ANSWER_TIMEOUT_MS / 1000}s.`,
+        `${wMention}, ¿que tenes para declarar sobre ${targetMention}?`,
         'testigo'
       );
       if (t) testimonies.push({ mention: wMention, role: 'testigo', text: t });
@@ -764,7 +767,7 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
       await channel.send(`🎤 ${lMention}, tu turno como defensa de ${targetMention}.`);
       const l = await interrogate(
         channel, guild, lawyer.id, lMention, targetMention,
-        `${lMention}, ¿que argumentas a favor de ${targetMention}? Tenes ${ANSWER_TIMEOUT_MS / 1000}s.`,
+        `${lMention}, ¿que argumentas a favor de ${targetMention}?`,
         'abogado defensor'
       );
       if (l) testimonies.push({ mention: lMention, role: 'abogado defensor', text: l });
@@ -775,7 +778,7 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
       await channel.send(`🎤 ${lMention}, tu turno apoyando la acusacion contra ${targetMention}.`);
       const l = await interrogate(
         channel, guild, lawyer.id, lMention, targetMention,
-        `${lMention}, ¿que argumentas en contra de ${targetMention}? Tenes ${ANSWER_TIMEOUT_MS / 1000}s.`,
+        `${lMention}, ¿que argumentas en contra de ${targetMention}?`,
         'abogado de la acusacion'
       );
       if (l) testimonies.push({ mention: lMention, role: 'abogado de la acusacion', text: l });
@@ -786,7 +789,7 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
     await channel.send(`🎤 Por ultimo, ${initiatorMention} (quien pidio el juicio) tambien tiene derecho a declarar.`);
     const accuserTestimony = await interrogate(
       channel, guild, interaction.user.id, initiatorMention, targetMention,
-      `${initiatorMention}, ¿algo mas que quieras agregar como acusador/a? Tenes ${ANSWER_TIMEOUT_MS / 1000}s.`,
+      `${initiatorMention}, ¿algo mas que quieras agregar como acusador/a?`,
       'acusador', 1
     );
     if (accuserTestimony) testimonies.push({ mention: initiatorMention, role: 'acusador', text: accuserTestimony });

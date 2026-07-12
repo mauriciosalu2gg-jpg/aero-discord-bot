@@ -146,7 +146,7 @@ async function runAutoModeration(message) {
           await member.timeout(sanction.durationMs, 'Moderacion automatica: falta de respeto repetida');
         }
         await message.channel.send({
-          content: `🔇 <@${message.author.id}> timeout de ${sanction.label} por seguir faltando el respeto.`,
+          content: `🔇 <@${message.author.id}> timeout de ${sanction.label}. Vuelve a hablar cuando termine.\n⏳ Tiempo estimado: <t:${Math.floor((Date.now() + sanction.durationMs) / 1000)}:R> (Finaliza: <t:${Math.floor((Date.now() + sanction.durationMs) / 1000)}:F>)`,
           allowedMentions: { users: [message.author.id] },
         });
         break;
