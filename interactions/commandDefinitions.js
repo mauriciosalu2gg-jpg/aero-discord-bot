@@ -60,7 +60,7 @@ export const commandDefinitions = [
 
   new SlashCommandBuilder()
     .setName('objecion')
-    .setDescription('💪 OBJECION: solo abogados registrados en un /funador activo pueden usarlo, en cualquier momento del interrogatorio')
+    .setDescription('💪 OBJECION: solo abogados del /funador activo pueden usarla')
     .addStringOption(opt => opt.setName('motivo').setDescription('Por que estas objetando (opcional, corto)').setRequired(false)),
   // Sin setDefaultMemberPermissions(Administrator) a proposito: este
   // comando NO es exclusivo de Lara/Gio. Cualquier persona que haya sido
