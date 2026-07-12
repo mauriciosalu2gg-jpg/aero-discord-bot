@@ -1,5 +1,6 @@
 // services/adapters/anthropic.js
 import SYSTEM_PROMPT from '../../prompt.js';
+import { getMaxTokens } from '../../config/providers.js';
 
 export async function callAnthropic(apiKey, model, history, systemExtra = '') {
   if (!apiKey) throw new Error('Anthropic: sin API Key');
@@ -12,7 +13,7 @@ export async function callAnthropic(apiKey, model, history, systemExtra = '') {
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
     },
-    body: JSON.stringify({ model, max_tokens: 500, system, messages: history }),
+    body: JSON.stringify({ model, max_tokens: getMaxTokens('anthropic'), system, messages: history }),
   });
 
   const d = await res.json();

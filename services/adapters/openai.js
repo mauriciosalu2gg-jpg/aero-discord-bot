@@ -1,5 +1,6 @@
 // services/adapters/openai.js
 import SYSTEM_PROMPT from '../../prompt.js';
+import { getMaxTokens } from '../../config/providers.js';
 
 export async function callOpenAI(apiKey, model, history, systemExtra = '') {
   if (!apiKey) throw new Error('OpenAI: sin API Key');
@@ -13,7 +14,7 @@ export async function callOpenAI(apiKey, model, history, systemExtra = '') {
     },
     body: JSON.stringify({
       model,
-      max_tokens: 500,
+      max_tokens: getMaxTokens('openai'),
       messages: [{ role: 'system', content: system }, ...history],
     }),
   });

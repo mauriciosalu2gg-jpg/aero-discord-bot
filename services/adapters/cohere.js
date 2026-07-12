@@ -5,6 +5,7 @@
 // que OpenAI, asi que reusamos el mismo cliente HTTP generico.
 import SYSTEM_PROMPT from '../../prompt.js';
 import { chatCompletionsRequest } from '../ai/httpChatClient.js';
+import { getMaxTokens, getRepetitionControls } from '../../config/providers.js';
 
 const COHERE_ENDPOINT = 'https://api.cohere.ai/compatibility/v1/chat/completions';
 
@@ -17,6 +18,8 @@ export async function callCohere(apiKey, model, history, systemExtra = '') {
     apiKey,
     model,
     messages: [{ role: 'system', content: system }, ...history],
+    maxTokens: getMaxTokens('cohere'),
+    extraBody: getRepetitionControls('cohere'),
   });
 
   return { text, tokens };

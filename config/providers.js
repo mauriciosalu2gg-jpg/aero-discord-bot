@@ -80,6 +80,47 @@ export const COOLDOWN_MS = {
   // groq: { overloaded: 2 * 60 * 1000 },
 };
 
+/**
+ * Máximo de tokens de salida por proveedor. Mensajes cortos de chat no
+ * necesitan mucho margen; darle demasiado a un modelo propenso a repetirse
+ * (Cohere command-r sobre todo) es lo que produce los mensajes gigantes
+ * en loop. Ajustable por proveedor porque cada uno tokeniza y se comporta
+ * distinto ante el corte.
+ */
+export const MAX_TOKENS = {
+  default: 300,
+  gemini: 350,
+  groq: 300,
+  openai: 350,
+  anthropic: 350,
+  cerebras: 300,
+  openrouter: 300,
+  huggingface: 300,
+  mistral: 300,
+  cohere: 220, // command-r-plus tiende a entrar en loops repetitivos con margen amplio
+};
+
+/**
+ * Controles anti-repetición por proveedor, en formato OpenAI-compatible
+ * (frequency_penalty / presence_penalty, rango tipico -2.0 a 2.0). Los
+ * proveedores que no soportan estos campos simplemente los ignoran si el
+ * endpoint es tolerante, o se filtran en el adaptador correspondiente.
+ */
+export const REPETITION_CONTROLS = {
+  default: {},
+  cohere: { frequency_penalty: 0.6, presence_penalty: 0.4 },
+  groq: { frequency_penalty: 0.3 },
+  openrouter: { frequency_penalty: 0.3 },
+};
+
+export function getMaxTokens(providerName) {
+  return MAX_TOKENS[providerName] ?? MAX_TOKENS.default;
+}
+
+export function getRepetitionControls(providerName) {
+  return REPETITION_CONTROLS[providerName] ?? REPETITION_CONTROLS.default;
+}
+
 /** Timeout máximo (ms) por request a un proveedor. */
 export const REQUEST_TIMEOUT_MS = 25_000;
 
@@ -121,10 +162,14 @@ export default {
   PROVIDER_PRIORITY,
   MODEL_LADDERS,
   COOLDOWN_MS,
+  MAX_TOKENS,
+  REPETITION_CONTROLS,
   REQUEST_TIMEOUT_MS,
   RETRIES_PER_MODEL,
   HEAVY_HISTORY_TOKENS_THRESHOLD,
   STATS_WINDOW_SIZE,
   getCooldownMs,
   getModelLadder,
+  getMaxTokens,
+  getRepetitionControls,
 };

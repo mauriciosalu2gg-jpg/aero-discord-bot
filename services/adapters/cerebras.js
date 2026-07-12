@@ -3,6 +3,7 @@
 // Cerebras tiene su propio endpoint y sus propios modelos.
 import SYSTEM_PROMPT from '../../prompt.js';
 import { chatCompletionsRequest } from '../ai/httpChatClient.js';
+import { getMaxTokens, getRepetitionControls } from '../../config/providers.js';
 
 const CEREBRAS_ENDPOINT = 'https://api.cerebras.ai/v1/chat/completions';
 
@@ -15,6 +16,8 @@ export async function callCerebras(apiKey, model, history, systemExtra = '') {
     apiKey,
     model,
     messages: [{ role: 'system', content: system }, ...history],
+    maxTokens: getMaxTokens('cerebras'),
+    extraBody: getRepetitionControls('cerebras'),
   });
 
   return { text, tokens };

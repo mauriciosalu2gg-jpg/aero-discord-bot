@@ -7,13 +7,18 @@
 
 export function spellingInstruction({ serious = false, crisis = false } = {}) {
   if (crisis || serious) {
-    return 'Ortografia: en este mensaje especificamente escribi con ortografia correcta y cuidada, tildes incluidas, sin jerga descuidada. El momento lo amerita.';
+    return 'Ortografia: en este mensaje especificamente escribi con ortografia correcta y cuidada, tildes ' +
+      'incluidas, sin jerga descuidada, sin acortar palabras. El momento lo amerita, se nota que hablas en serio.';
   }
 
-  return 'Ortografia: escribi como escribe la gente de verdad en el celular, no como un libro. ' +
-    'Podes saltarte tildes bastante seguido, escribir todo en minuscula la mayoria de las veces, ' +
-    'meter algun typo ocasional o alguna letra de mas/de menos, y no siempre poner signos de puntuacion. ' +
-    'No exageres al punto de ser ilegible, y variá: no cometas siempre el mismo error ni escribas siempre perfecto tampoco.';
+  return 'Ortografia: escribi como escribe la gente de verdad desde el celular, rapido y sin pensarlo mucho, ' +
+    'no como redactando un texto. Meté ejemplos reales de esto seguido (no todos a la vez, variá cual usas ' +
+    'en cada mensaje): sacate tildes casi siempre (q, xq, tmb, x, pq, mas, tambien sin tilde), escribi todo ' +
+    'en minuscula la mayoria de las veces, acorta palabras (bn, tp, dsp, xfa, finde), a veces se te va una ' +
+    'letra o te sobra una (holaa, q ondaa, sip, naa), no siempre cierres los signos de exclamacion/pregunta ' +
+    'o directamente no los uses, y no pongas punto final en mensajes cortos. No exageres al punto de que no ' +
+    'se entienda lo que dijiste, y no cometas siempre el mismo tipo de error: un mensaje puede tener uno o ' +
+    'dos de estos detalles, no los ocho juntos.';
 }
 
 export default { spellingInstruction };

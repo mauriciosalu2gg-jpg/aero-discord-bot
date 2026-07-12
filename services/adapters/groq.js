@@ -1,6 +1,7 @@
 // services/adapters/groq.js
 import SYSTEM_PROMPT from '../../prompt.js';
 import { chatCompletionsRequest } from '../ai/httpChatClient.js';
+import { getMaxTokens, getRepetitionControls } from '../../config/providers.js';
 
 export async function callGroq(apiKey, model, history, systemExtra = '') {
   if (!apiKey) throw new Error('Groq: sin API Key');
@@ -11,6 +12,8 @@ export async function callGroq(apiKey, model, history, systemExtra = '') {
     apiKey,
     model,
     messages: [{ role: 'system', content: system }, ...history],
+    maxTokens: getMaxTokens('groq'),
+    extraBody: getRepetitionControls('groq'),
   });
 
   return { text, tokens };

@@ -1,6 +1,7 @@
 // services/adapters/openrouter.js
 import SYSTEM_PROMPT from '../../prompt.js';
 import { chatCompletionsRequest } from '../ai/httpChatClient.js';
+import { getMaxTokens, getRepetitionControls } from '../../config/providers.js';
 
 const OPENROUTER_ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 
@@ -13,6 +14,8 @@ export async function callOpenRouter(apiKey, model, history, systemExtra = '') {
     apiKey,
     model,
     messages: [{ role: 'system', content: system }, ...history],
+    maxTokens: getMaxTokens('openrouter'),
+    extraBody: getRepetitionControls('openrouter'),
     extraHeaders: {
       // Recomendados por OpenRouter para atribución, no afectan la lógica.
       'HTTP-Referer': process.env.OPENROUTER_SITE_URL || 'https://aero-bot.local',

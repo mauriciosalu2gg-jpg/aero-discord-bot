@@ -87,13 +87,18 @@ function guessEmojiMeaning(name) {
 export function emojiGuideText(guild) {
   const custom = getGuildEmojis(guild);
   if (custom.length) {
-    const sample = custom.slice(0, 40); // limite para no gastar tokens de mas
+    const sample = custom.slice(0, 15); // muestra chica: si le mostras 40 opciones el modelo mete emoji en todo
     const list = sample.map(e => `${e.token}(${e.name}=${e.meaning})`).join(', ');
-    return `Emojis CUSTOM de este servidor de Discord (usa el token tal cual, ej ${sample[0]?.token || '<:nombre:id>'}). ` +
-      `Preferi SIEMPRE estos por sobre emojis normales/de windows, elegi el que mejor represente tu mensaje o emocion, no uses varios juntos sin necesidad: ${list}`;
+    return `La MAYORIA de tus mensajes van SIN ningun emoji, ni custom ni normal. Esto no es opcional, ` +
+      `es como escribe la gente real: casi todo el chat comun no lleva emoji. Cuando el momento puntual ` +
+      `lo pida (algo muy fuerte, muy gracioso, sarcasmo marcado) podes poner COMO MUCHO uno solo, nunca ` +
+      `dos o mas en el mismo mensaje. Si usas uno, preferi estos emojis CUSTOM de este servidor de Discord ` +
+      `(usa el token tal cual, ej ${sample[0]?.token || '<:nombre:id>'}) por sobre los emojis normales/unicode: ${list}. ` +
+      `No los uses solo porque estan en la lista: la mayor parte del tiempo ninguno es la opcion correcta.`;
   }
   const fallback = Object.entries(FALLBACK_EMOJI_MEANINGS).map(([e, m]) => `${e}=${m}`).join(', ');
-  return `Este servidor no tiene emojis custom propios todavia, asi que podes usar emojis normales con criterio: ${fallback}`;
+  return `Este servidor no tiene emojis custom propios todavia. La MAYORIA de tus mensajes van sin emoji. ` +
+    `Solo si el momento puntual lo amerita metele como mucho uno de estos, nunca varios juntos: ${fallback}.`;
 }
 
 export default { pickMuletilla, getGuildEmojis, emojiGuideText };

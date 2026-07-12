@@ -3,6 +3,7 @@
 // compatible con el esquema OpenAI (router.huggingface.co).
 import SYSTEM_PROMPT from '../../prompt.js';
 import { chatCompletionsRequest } from '../ai/httpChatClient.js';
+import { getMaxTokens, getRepetitionControls } from '../../config/providers.js';
 
 const HUGGINGFACE_ENDPOINT = 'https://router.huggingface.co/v1/chat/completions';
 
@@ -15,6 +16,8 @@ export async function callHuggingFace(apiKey, model, history, systemExtra = '') 
     apiKey,
     model,
     messages: [{ role: 'system', content: system }, ...history],
+    maxTokens: getMaxTokens('huggingface'),
+    extraBody: getRepetitionControls('huggingface'),
   });
 
   return { text, tokens };

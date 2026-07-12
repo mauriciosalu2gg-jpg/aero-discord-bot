@@ -1,5 +1,6 @@
 // services/adapters/gemini.js
 import SYSTEM_PROMPT from '../../prompt.js';
+import { getMaxTokens } from '../../config/providers.js';
 
 export async function callGemini(apiKey, model, history, systemExtra = '') {
   if (!apiKey) throw new Error('Gemini: sin API Key');
@@ -16,6 +17,7 @@ export async function callGemini(apiKey, model, history, systemExtra = '') {
           role: h.role === 'assistant' ? 'model' : 'user',
           parts: [{ text: h.content }],
         })),
+        generationConfig: { maxOutputTokens: getMaxTokens('gemini') },
       }),
     }
   );

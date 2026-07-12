@@ -4,6 +4,7 @@
 // compatible con el formato chat/completions estilo OpenAI.
 import SYSTEM_PROMPT from '../../prompt.js';
 import { chatCompletionsRequest } from '../ai/httpChatClient.js';
+import { getMaxTokens, getRepetitionControls } from '../../config/providers.js';
 
 const MISTRAL_ENDPOINT = 'https://api.mistral.ai/v1/chat/completions';
 
@@ -16,6 +17,8 @@ export async function callMistral(apiKey, model, history, systemExtra = '') {
     apiKey,
     model,
     messages: [{ role: 'system', content: system }, ...history],
+    maxTokens: getMaxTokens('mistral'),
+    extraBody: getRepetitionControls('mistral'),
   });
 
   return { text, tokens };
