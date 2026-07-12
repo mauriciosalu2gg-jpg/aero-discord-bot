@@ -22,7 +22,17 @@ export function buildSystemExtra({
 } = {}) {
   const parts = [];
 
-  if (moodInfo) parts.push(moodInstruction(moodInfo));
+  const isCreatorMsg = isOwner || isSubCreator;
+
+  // Moods que suenan cortantes/con actitud/regañones no aplican cuando
+  // habla un creador: se reemplazan por una version neutral-amigable, asi
+  // ni siquiera compite con el bloque de creatorPromptExtra mas abajo.
+  const SOFTEN_MOODS = new Set(['enojado', 'defensivo', 'dramatico']);
+  if (moodInfo && isCreatorMsg && SOFTEN_MOODS.has(moodInfo.mood)) {
+    parts.push('Tono normal, relajado y de buena onda -- podes seguir con humor y sarcasmo liviano, pero sin actitud cortante ni de reto.');
+  } else if (moodInfo) {
+    parts.push(moodInstruction(moodInfo));
+  }
   parts.push(spellingInstruction(moodInfo || {}));
   parts.push(`Emojis: ${emojiGuideText(guild)}`);
 
