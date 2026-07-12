@@ -10,6 +10,7 @@ import { commandDefinitions } from './interactions/commandDefinitions.js';
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.DISCORD_CLIENT_ID;
 const guildIdArg = process.argv[2];
+const shouldClearGlobal = process.argv.includes('--clear-global');
 
 if (!token) {
   console.error('[deploy] Falta DISCORD_TOKEN en el .env');
@@ -28,6 +29,11 @@ async function main() {
       console.log(`[deploy] Registrando ${commandDefinitions.length} comandos SOLO en el servidor ${guildIdArg} (instantaneo)...`);
       await rest.put(Routes.applicationGuildCommands(clientId, guildIdArg), { body: commandDefinitions });
       console.log('[deploy] Listo. Los comandos ya deberian aparecer en ese servidor.');
+      if (shouldClearGlobal) {
+        console.log('[deploy] Limpiando comandos globales viejos para evitar duplicados...');
+        await rest.put(Routes.applicationCommands(clientId), { body: [] });
+        console.log('[deploy] Comandos globales limpiados.');
+      }
     } else {
       console.log(`[deploy] Registrando ${commandDefinitions.length} comandos GLOBALES (puede tardar hasta 1 hora en propagar)...`);
       await rest.put(Routes.applicationCommands(clientId), { body: commandDefinitions });

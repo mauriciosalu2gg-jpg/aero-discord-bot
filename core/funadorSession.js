@@ -26,6 +26,7 @@
 // de Discord (que mencion implicitamente al bot) su respuesta se usa SOLO
 // para el juicio y no dispara ademas una respuesta de charla normal.
 import { askAI } from '../services/aiManager.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } from 'discord.js';
 import { getMemory } from './memory.js';
 import { humanizedTyping } from './typingDelay.js';
 
@@ -151,6 +152,19 @@ function buildConsentPrompt(initiatorMention, targetMention, razon = null) {
   );
 }
 
+function buildButtons(buttons) {
+  return [
+    new ActionRowBuilder().addComponents(
+      buttons.map(btn =>
+        new ButtonBuilder()
+          .setCustomId(btn.id)
+          .setLabel(btn.label)
+          .setStyle(btn.style)
+      )
+    ),
+  ];
+}
+
 async function pause(channel, ms = 1500) {
   await humanizedTyping(channel, Math.min(ms, 8000)).catch(() => {});
 }
@@ -163,6 +177,31 @@ async function pause(channel, ms = 1500) {
 // declarar, pedirle una respuesta) siguen usando channel.send normal.
 async function sendNarration(channel, text) {
   return channel.send({ content: text, allowedMentions: { parse: [] } });
+}
+
+async function askConsentWithButtons(channel, targetUser, initiatorMention, targetMention, razon) {
+  const consentMsg = await channel.send({
+    content: buildConsentPrompt(initiatorMention, targetMention, razon),
+    components: buildButtons([
+      { id: `funador-consent-yes:${targetUser.id}`, label: 'Acepto', style: ButtonStyle.Success },
+      { id: `funador-consent-no:${targetUser.id}`, label: 'Paso', style: ButtonStyle.Secondary },
+    ]),
+  });
+
+  const click = await consentMsg.awaitMessageComponent({
+    componentType: ComponentType.Button,
+    time: CONSENT_TIMEOUT_MS,
+    filter: i => i.user.id === targetUser.id && i.customId.endsWith(`:${targetUser.id}`),
+  }).catch(() => null);
+
+  if (!click) {
+    await consentMsg.edit({ components: [] }).catch(() => {});
+    return false;
+  }
+
+  const accepted = click.customId.startsWith('funador-consent-yes:');
+  await click.update({ components: [] }).catch(() => {});
+  return accepted;
 }
 
 const EXTRA_TIME_PHRASES = [
@@ -297,7 +336,10 @@ async function resolveAnyPendingObjection(channel, guild, targetMention) {
       `Narra en 1-2 lineas la reaccion de la sala (humor, sin resolverla en serio). ${STYLE_RULES}`;
     const resp = await askAI([{ role: 'user', content: prompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
     await pause(channel, 800);
-    await channel.send(`💪 **${objMention} OBJECION!**\n${resp?.text?.trim() || 'la sala queda en silencio un segundo...'}`);
+    await channel.send({
+      content: `💪 **${objMention} OBJECION!**\n${resp?.text?.trim() || 'la sala queda en silencio un segundo...'}`,
+      allowedMentions: { users: [obj.userId] },
+    });
   }
 }
 
@@ -373,6 +415,44 @@ async function collectLawyers(channel, personId, personMention, excludeIds, side
     if (capped.length >= MAX_LAWYERS_PER_SIDE) break;
   }
   return capped;
+}
+
+async function collectWitnessVolunteers(channel, waitMs, excludedIds = new Set(), sharedState = null) {
+  const volunteers = new Map();
+  const witnessMsg = await channel.send({
+    content:
+      `🙋 ventana de testigos abierta (${Math.round(waitMs / 1000)}s). ` +
+      `Si alguien quiere sumarse, pulse el boton. Cupo maximo ${MAX_WITNESSES_PER_SIDE} por bando.`,
+    components: buildButtons([
+      { id: `funador-witness:${channel.id}`, label: 'Quiero ser testigo', style: ButtonStyle.Primary },
+    ]),
+  });
+
+  const collector = witnessMsg.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    time: waitMs,
+    filter: i => i.customId === `funador-witness:${channel.id}`,
+  });
+
+  collector.on('collect', async i => {
+    if (i.user.bot || excludedIds.has(i.user.id)) {
+      await i.reply({ content: 'en esta ronda no te puedo anotar como testigo.', ephemeral: true }).catch(() => {});
+      return;
+    }
+    volunteers.set(i.user.id, i.user);
+    await i.reply({ content: 'anotado como posible testigo.', ephemeral: true }).catch(() => {});
+  });
+
+  const watcher = sharedState
+    ? setInterval(() => {
+      if (sharedState.closed) collector.stop('skip-all');
+    }, 1000)
+    : null;
+
+  await new Promise(resolve => collector.on('end', resolve));
+  if (watcher) clearInterval(watcher);
+  await witnessMsg.edit({ components: [] }).catch(() => {});
+  return [...volunteers.values()];
 }
 
 // Clasifica cada testigo como a favor o en contra de targetMention segun
@@ -458,31 +538,55 @@ async function classifyAndCapWitnesses(guild, channelName, targetMention, witnes
 // reaccionan con 🕐 pidiendo saltarla. Si no hay votantes definidos (nadie
 // para votar todavia, ej. antes de que se sepa quien es abogado), simplemente
 // espera el tiempo completo.
-async function waitOrSkipByVote(channel, waitMs, voterIds, skipLabel) {
+async function waitOrSkipByVote(channel, waitMs, voterIds, skipLabel, sharedState = null) {
   if (!voterIds || voterIds.size === 0) {
     await new Promise(r => setTimeout(r, waitMs));
     return;
   }
 
-  const voteMsg = await channel.send(
-    `⏱️ ${skipLabel} (${Math.round(waitMs / 1000)}s). Si TODOS los involucrados (abogados de ambos lados, acusado y acusador) reaccionan con 🕐, saltamos el tiempo restante.`
-  );
-  await voteMsg.react('🕐');
+  const votedIds = new Set();
+  const voteMsg = await channel.send({
+    content: `⏱️ ${skipLabel} (${Math.round(waitMs / 1000)}s). Si todos los involucrados pulsan "saltar", seguimos antes.`,
+    components: buildButtons([
+      { id: `funador-skip:${channel.id}`, label: 'Saltar espera', style: ButtonStyle.Secondary },
+    ]),
+  });
 
-  const start = Date.now();
-  const pollMs = 2000;
-  while (Date.now() - start < waitMs) {
-    await new Promise(r => setTimeout(r, pollMs));
-    const reaction = voteMsg.reactions.cache.get('⏰') || voteMsg.reactions.cache.get('🕐');
-    if (!reaction) continue;
-    const voted = await reaction.users.fetch().catch(() => new Map());
-    const votedIds = new Set([...voted.values()].filter(u => !u.bot).map(u => u.id));
-    const allVoted = [...voterIds].every(id => votedIds.has(id));
-    if (allVoted) {
-      await channel.send('todos votaron saltar, seguimos ⏩').catch(() => {});
-      return;
-    }
-  }
+  const collector = voteMsg.createMessageComponentCollector({
+    componentType: ComponentType.Button,
+    time: waitMs,
+    filter: i => i.customId === `funador-skip:${channel.id}` && voterIds.has(i.user.id),
+  });
+
+  return new Promise(resolve => {
+    let done = false;
+    const finish = async (skipped) => {
+      if (done) return;
+      done = true;
+      collector.stop();
+      if (sharedState) sharedState.closed = skipped;
+      await voteMsg.edit({ components: [] }).catch(() => {});
+      if (skipped) {
+        await channel.send('todos votaron saltar, seguimos ⏩').catch(() => {});
+      }
+      resolve();
+    };
+
+    collector.on('collect', async i => {
+      votedIds.add(i.user.id);
+      const faltan = [...voterIds].filter(id => !votedIds.has(id)).length;
+      if ([...voterIds].every(id => votedIds.has(id))) {
+        await i.update({ components: [] }).catch(() => {});
+        await finish(true);
+        return;
+      }
+      await i.reply({ content: `anotado. Faltan ${faltan} voto(s).`, ephemeral: true }).catch(() => {});
+    });
+
+    collector.on('end', async () => {
+      await finish(false);
+    });
+  });
 }
 
 export async function startFunadorSession(interaction, targetUser, razon = null) {
@@ -492,17 +596,27 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
   const initiatorMention = `<@${interaction.user.id}>`;
   const targetMention = `<@${targetUser.id}>`;
 
+  const sendAck = async (payload) => {
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply(payload).catch(async () => {
+        await interaction.followUp(payload).catch(() => {});
+      });
+      return;
+    }
+    await interaction.reply(payload);
+  };
+
   if (activeSessions.has(channelId)) {
-    await interaction.reply({ content: 'ya hay un juicio en curso en este canal, esperemos a que termine 😅', ephemeral: true });
+    await sendAck({ content: 'ya hay un juicio en curso en este canal, esperemos a que termine', ephemeral: true });
     return;
   }
   if (targetUser.bot) {
-    await interaction.reply({ content: 'no le puedo hacer un juicio a otro bot, jaja', ephemeral: true });
+    await sendAck({ content: 'no le puedo hacer un juicio a otro bot', ephemeral: true });
     return;
   }
 
   activeSessions.add(channelId);
-  await interaction.reply({ content: `dale, le pregunto a ${targetMention} si quiere jugar 👀`, ephemeral: false });
+  await sendAck({ content: `dale, le pregunto a ${targetMention} si quiere jugar`, ephemeral: false });
 
   try {
     // ── 0. Fetchea historial reciente y arma contexto inicial ────────────
@@ -527,20 +641,7 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
     }
 
     // ── 1. Consentimiento del acusado, obligatorio ──────────────────────
-    const consentMsg = await channel.send(buildConsentPrompt(initiatorMention, targetMention, razonLimpia));
-    await consentMsg.react('✅');
-    await consentMsg.react('❌');
-
-    const consentCollected = await consentMsg
-      .awaitReactions({
-        filter: (reaction, user) => user.id === targetUser.id && ['✅', '❌'].includes(reaction.emoji.name),
-        max: 1,
-        time: CONSENT_TIMEOUT_MS,
-        errors: ['time'],
-      })
-      .catch(() => null);
-
-    const accepted = consentCollected && [...consentCollected.values()][0]?.emoji.name === '✅';
+    const accepted = await askConsentWithButtons(channel, targetUser, initiatorMention, targetMention, razonLimpia);
     if (!accepted) {
       await channel.send(`bueno, quedamos ahi entonces, no hay juicio 🤝 (${targetMention} no dijo que si o no contesto a tiempo)`);
       return;
@@ -571,17 +672,13 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
     // (el aviso individual de "apoyo de la acusacion anotado" ahora va en el resumen unico del paso 4)
 
     // ── 3. Invitacion abierta a testigos, opcional, tope 4 por bando ─────
-    const witnessMsg = await channel.send(
-      `sigue en pie 🎉 el que quiera sumarse de testigo, que reaccione con 🙋 en los proximos ${WITNESS_WINDOW_MS / 1000}s ` +
-      `(opcional, nadie esta obligado, maximo ${MAX_WITNESSES_PER_SIDE} testigos por bando).`
-    );
-    await witnessMsg.react('🙋');
     const witnessVoters = new Set([targetUser.id, interaction.user.id, ...lawyerUsers.map(u => u.id), ...accuserLawyerUsers.map(u => u.id)]);
-    await waitOrSkipByVote(channel, WITNESS_WINDOW_MS, witnessVoters, 'ventana de testigos abierta');
-    const reactionUsers = witnessMsg.reactions.cache.get('🙋')
-      ? await witnessMsg.reactions.cache.get('🙋').users.fetch().catch(() => new Map())
-      : new Map();
-    const rawWitnesses = [...reactionUsers.values()].filter(u => !u.bot && u.id !== targetUser.id && u.id !== interaction.user.id && !lawyerUsers.some(l => l.id === u.id) && !accuserLawyerUsers.some(l => l.id === u.id));
+    const excludedWitnessIds = new Set([targetUser.id, interaction.user.id, ...lawyerUsers.map(u => u.id), ...accuserLawyerUsers.map(u => u.id)]);
+    const witnessWindowState = { closed: false };
+    const [rawWitnesses] = await Promise.all([
+      collectWitnessVolunteers(channel, WITNESS_WINDOW_MS, excludedWitnessIds, witnessWindowState),
+      waitOrSkipByVote(channel, WITNESS_WINDOW_MS, witnessVoters, 'ventana de testigos abierta', witnessWindowState),
+    ]);
 
     const memory = await getMemory(channelId, guild?.id).catch(() => ({ messages: [] }));
     const recentText = (memory.messages || [])

@@ -11,14 +11,14 @@ export function splitHumanized(text, moodInfo = {}) {
   const { mood, intensity = 1 } = moodInfo;
   const chaotic = ['divertido', 'hype', 'coqueto', 'enojado'].includes(mood) && intensity >= 2;
 
-  const splitChance = chaotic ? 0.45 : 0.28;
-  const shouldSplit = Math.random() < splitChance && clean.length > 40;
+  const splitChance = chaotic ? 0.18 : 0.06;
+  const shouldSplit = Math.random() < splitChance && clean.length > 140;
   if (!shouldSplit) return [clean];
 
   const sentences = clean.split(/(?<=[.!?])\s+/).filter(Boolean);
   if (sentences.length < 2) return [clean];
 
-  const maxChunks = chaotic ? Math.min(4, sentences.length) : Math.min(3, sentences.length);
+  const maxChunks = chaotic ? Math.min(2, sentences.length) : 2;
   const chunkCount = Math.max(2, maxChunks);
   const perChunk = Math.ceil(sentences.length / chunkCount);
 

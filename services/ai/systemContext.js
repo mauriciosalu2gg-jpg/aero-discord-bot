@@ -53,6 +53,7 @@ export function buildSystemExtra({
   if (memorySummary) {
     parts.push(memorySummary);
   }
+  parts.push('Continuidad: responde como alguien que SI se acuerda del tono y de lo reciente. No reinicies la charla, no expliques contexto que ya comparten, y si no estas seguro de un recuerdo puntual no lo inventes.');
   const webInstruction = buildWebContextInstruction(webContext);
   if (webInstruction) {
     parts.push(webInstruction);

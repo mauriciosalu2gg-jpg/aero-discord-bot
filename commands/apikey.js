@@ -28,13 +28,16 @@ function displayName(providerName) {
   return PROVIDER_DISPLAY_NAMES[providerName] || providerName;
 }
 
-// Regex flexibles en vez de frases exactas, para cubrir variantes como
-// "que modelo usas", "que compañia usas", "con que estas corriendo", etc.
-// sin tener que listar cada combinacion posible a mano.
+// Regex mas estrictos: antes disparaban con cualquier frase que
+// combinara "modelo/ia/compañia" + "usando/estas", lo cual generaba falsos
+// positivos con charla normal sin relacion a IA (ej: "que modelo de auto
+// estas usando", "con que compañia andas de celular"). Ahora exigen
+// vocabulario especifico de IA/tokens junto a la pregunta, no generico.
 const TRIGGER_PATTERNS = [
-  /\b(que|cual)\s+(modelo|ia|proveedor|compa[nñ]ia|compa[nñ]ía)\b.*\b(usas|usando|corriendo|estas)\b/,
-  /\bcon\s+que\s+(modelo|ia|compa[nñ]ia|compa[nñ]ía)\b.*\b(corriendo|estas)\b/,
-  /\b(groq|openai|gemini|anthropic|claude|cerebras|openrouter)\b.*\b(usas|usando|estas usando)\b/,
+  /\b(que|cual)\s+(modelo|proveedor)\s+de\s+ia\b/,
+  /\b(que|cual)\s+ia\b.*\b(usas|usando|corriendo|estas)\b/,
+  /\bcon\s+que\s+ia\b.*\b(corriendo|estas|andas)\b/,
+  /\b(groq|openai|gemini|anthropic|claude|cerebras|openrouter|mistral|cohere|huggingface)\b.*\b(usas|usando|estas usando|activo|corriendo)\b/,
   /\bcuantos?\s+tokens?\b.*\b(gastad|gastaste|llevas|has gastado)\b/,
   /\btokens?\s+(gastados|gastaste|has gastado)\b/,
 ];
@@ -51,7 +54,8 @@ export function mentionsApiKeyTopic(content) {
  */
 export async function buildForcedStatusReply(guildTokensUsedTotal = null) {
   const active = getActiveProvider();
-  const providerNames = secrets.PROVIDER_PRIORITY;
+  const configured = new Set(secrets.getAvailableProviders().map(p => p.name));
+  const providerNames = secrets.PROVIDER_PRIORITY.filter(name => configured.has(name));
   const snapshots = getAllSnapshots(providerNames);
 
   const lines = [];
@@ -62,7 +66,9 @@ export async function buildForcedStatusReply(guildTokensUsedTotal = null) {
     lines.push('todavia no hay un proveedor cacheado, se elige apenas mande el proximo mensaje');
   }
 
-  const healthy = snapshots.filter(s => s.status === 'Healthy').map(s => displayName(s.name));
+  const healthy = snapshots
+    .filter(s => s.status === 'Healthy' && (!active || s.name !== active.name))
+    .map(s => displayName(s.name));
   if (healthy.length) lines.push(`otras compañias sanas ahora mismo por si toca cambiar: ${healthy.join(', ')}`);
 
   if (typeof guildTokensUsedTotal === 'number') {

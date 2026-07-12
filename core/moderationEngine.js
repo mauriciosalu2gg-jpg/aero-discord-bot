@@ -37,6 +37,10 @@ export function isModerationActive(guildId) {
   return !!activeGuildsCache.get(guildId);
 }
 
+export function getStrikeInfo(guildId, userId) {
+  return strikesCache.get(strikeKey(guildId, userId)) || { strikes: 0, lastStrikeAt: null };
+}
+
 export async function setModerationActive(guildId, active) {
   activeGuildsCache.set(guildId, active);
   if (!db) return;
@@ -130,8 +134,15 @@ export function messageViolatesRespect(content, hasTargetMention = false) {
   const hasInsult = INSULT_REGEX.test(text);
   if (!hasInsult) return false;
 
+  const normalized = text.trim().toLowerCase();
+  const standaloneInsult = normalized.length <= 24 && /^[\p{L}\p{N}\s._*!?¿¡-]+$/u.test(normalized);
+
   // Con mencion/reply directo a alguien: cualquier insulto cuenta.
   if (hasTargetMention) return true;
+
+  // Insulto corto/suelto tipo "puta", "idiota", "gil de mierda":
+  // en moderacion activa tambien cuenta aunque no haya mention explicita.
+  if (standaloneInsult) return true;
 
   // Sin mencion/reply: solo cuenta si esta en 2da persona clara ("sos/eres
   // un ...", "callate ..."), para no sancionar frases como "que dia de
@@ -219,5 +230,6 @@ export default {
   hydrateStrikes,
   messageViolatesRespect,
   registerViolationAndGetSanction,
+  getStrikeInfo,
   clearStrikes,
 };

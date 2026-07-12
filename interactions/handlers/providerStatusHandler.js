@@ -1,5 +1,5 @@
 // interactions/handlers/providerStatusHandler.js
-// /provider -> version slash command del viejo !provider (texto). Muestra
+// /ai providers -> version slash command del viejo !provider (texto). Muestra
 // el estado completo del orquestador de IA: proveedor activo, modelo, y
 // para cada proveedor CONFIGURADO (con API Key en el .env) su salud,
 // cooldown restante y latencia promedio. Disponible para cualquiera

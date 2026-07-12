@@ -6,8 +6,7 @@
 // persona real que no esta pegada al celular) y tarda varios minutos en
 // contestar, hasta un maximo de 12 minutos. Nunca es fijo ni predecible.
 
-const MAX_DELAY_MS = 6 * 60 * 1000; // 6 minutos, techo absoluto
-const LONG_DELAY_CHANCE = 0.12; // ~12% de las veces tarda "minutos" en responder
+const MAX_DELAY_MS = 3 * 60 * 1000; // 3 minutos, techo absoluto real
 
 /**
  * @param {object} params
@@ -25,46 +24,35 @@ export function computeThinkingDelay({ responseText = '', moodInfo = {}, incomin
     return 350 + Math.random() * 900;
   }
 
-  // ── Rango "normal" (el que ya tenias, mayoria de los casos) ──
-  let baseMs = 400 + Math.random() * 900;
+  // Mensajes realmente largos: 2-3 min. Mensajes normales/cortos:
+  // alrededor de 1 min como maximo "humano" habitual.
+  const textWeight = Math.max(incomingLength, responseText.length);
+  if (textWeight >= 900) {
+    return 2 * 60 * 1000 + Math.random() * 60 * 1000;
+  }
+
+  if (textWeight >= 250) {
+    return 45 * 1000 + Math.random() * 45 * 1000;
+  }
+
+  // ── Rango corto/medio ──
+  let baseMs = 5000 + Math.random() * 12000;
 
   const lengthFactor = Math.min(responseText.length, 600) * 12;
   baseMs += lengthFactor;
 
-  if (incomingLength > 200) baseMs += 800 + Math.random() * 1200;
+  if (incomingLength > 120) baseMs += 4000 + Math.random() * 8000;
 
-  if (serious) baseMs += 1800 + Math.random() * 1500;
-  else if (mood === 'triste') baseMs += 1200 + Math.random() * 1200;
+  if (serious) baseMs += 8000 + Math.random() * 12000;
+  else if (mood === 'triste') baseMs += 5000 + Math.random() * 9000;
 
   if ((mood === 'hype' || mood === 'divertido') && intensity >= 2) {
-    baseMs *= 0.6;
+    baseMs *= 0.75;
   }
 
-  const jitter = (Math.random() - 0.5) * 600;
+  const jitter = (Math.random() - 0.5) * 4000;
   baseMs += jitter;
-
-  const normalDelay = Math.max(350, Math.min(baseMs, 9000));
-
-  // ── A veces (no siempre), el bot tarda mucho mas en "volver" a
-  //    responder, como alguien real que estaba haciendo otra cosa. Esto
-  //    es independiente del mood: puede pasar hasta con mensajes comunes,
-  //    pero mensajes largos de respuesta empujan un poco mas la
-  //    probabilidad/duracion, ya que "tiene mas para pensar/escribir".
-  const longChance = LONG_DELAY_CHANCE + Math.min(responseText.length / 4000, 0.08);
-  if (Math.random() < longChance) {
-// Delay largo: esperamos en silencio la mayor parte del tiempo, y recien
-  // en los ultimos segundos prendemos el indicador de "escribiendo...".
-  // Entre ~1 minuto y 6 minutos, con distribucion que favorece los
-  // valores mas bajos del rango (tardanzas de minutos son mas comunes
-  // que las de 5-6 min, que quedan como el extremo raro).
-  const minMs = 60_000;
-  const spread = MAX_DELAY_MS - minMs;
-  const skewed = Math.pow(Math.random(), 1.8); // sesga hacia valores chicos
-  const longDelay = minMs + skewed * spread;
-    return Math.min(longDelay, MAX_DELAY_MS);
-  }
-
-  return normalDelay;
+  return Math.max(8000, Math.min(baseMs, 60_000));
 }
 
 /**

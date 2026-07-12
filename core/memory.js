@@ -160,7 +160,7 @@ export async function addGuildTokenUsage(guildId, tokens) {
   writeLocalJSON(file, data);
 }
 
-// Total acumulado de TODOS los servidores juntos (para /modelstatus).
+// Total acumulado de TODOS los servidores juntos (para /ai status).
 export async function getGlobalTokenUsage() {
   if (db) {
     try {

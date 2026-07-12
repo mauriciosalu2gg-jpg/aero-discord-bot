@@ -43,6 +43,14 @@ const client = new Client({
   partials: [Partials.Channel, Partials.Message, Partials.Reaction],
 });
 
+function isNaturalPrompt(text) {
+  const clean = (text || '').trim();
+  if (!clean) return false;
+  if (/^[/!]/.test(clean)) return false;
+  if (/^[a-z0-9_-]{1,24}$/i.test(clean) && !/\s/.test(clean) && clean.length <= 4) return false;
+  return true;
+}
+
 // Servidor HTTP keepalive para Render + UptimeRobot
 http.createServer((req, res) => {
   if (req.method !== 'GET') { res.writeHead(405).end(); return; }
@@ -101,7 +109,7 @@ client.once('ready', async () => {
 
 client.on('guildCreate', g => config.registerGuild(g));
 
-// ── Slash commands (/ambient-mode, /forcetalk, /security, /moderation, /modelstatus, /resetmemory) ──
+// ── Slash command unico: /bot <grupo> <subcomando> ──
 client.on('interactionCreate', handleInteraction);
 
 // ── Moderacion automatica: corre ANTES que cualquier otra logica, para
@@ -123,27 +131,42 @@ async function runAutoModeration(message) {
   const member = message.member;
 
   try {
+    if (message.deletable) {
+      await message.delete().catch(() => {});
+    }
     switch (sanction.kind) {
       case 'warn':
-        await message.reply(`⚠️ <@${message.author.id}> baja un cambio, eso no se dice aca. Proxima vez ya es sancion (aviso ${sanction.strikeNumber}).`);
+        await message.channel.send({
+          content: `⚠️ <@${message.author.id}> baja un cambio. Eso cuenta como falta ${sanction.strikeNumber}.`,
+          allowedMentions: { users: [message.author.id] },
+        });
         break;
       case 'timeout':
         if (member?.moderatable) {
           await member.timeout(sanction.durationMs, 'Moderacion automatica: falta de respeto repetida');
         }
-        await message.reply(`🔇 <@${message.author.id}> te mande un timeout de ${sanction.label} por seguir faltando el respeto.`);
+        await message.channel.send({
+          content: `🔇 <@${message.author.id}> timeout de ${sanction.label} por seguir faltando el respeto.`,
+          allowedMentions: { users: [message.author.id] },
+        });
         break;
       case 'kick':
         if (member?.kickable) {
           await member.kick('Moderacion automatica: falta de respeto repetida');
         }
-        await message.channel.send(`👢 <@${message.author.id}> fue expulsado por seguir faltando el respeto despues de varios avisos.`);
+        await message.channel.send({
+          content: `👢 <@${message.author.id}> fue expulsado por reincidir.`,
+          allowedMentions: { users: [message.author.id] },
+        });
         break;
       case 'ban':
         if (member?.bannable) {
           await member.ban({ reason: 'Moderacion automatica: falta de respeto repetida (limite alcanzado)' });
         }
-        await message.channel.send(`🔨 <@${message.author.id}> fue baneado, ya se le avisó varias veces y siguió faltando el respeto.`);
+        await message.channel.send({
+          content: `🔨 <@${message.author.id}> fue baneado por reincidir despues de varios avisos.`,
+          allowedMentions: { users: [message.author.id] },
+        });
         break;
     }
   } catch (err) {
@@ -156,6 +179,9 @@ async function runAutoModeration(message) {
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
   const isMentioned = message.mentions.has(client.user);
+  const isReplyToBot = message.reference?.messageId
+    ? await message.fetchReference().then(ref => ref.author?.id === client.user.id).catch(() => false)
+    : false;
   const isDM = message.channel.type === 1;
 
   const guildId = message.guild?.id;
@@ -201,17 +227,18 @@ client.on('messageCreate', async (message) => {
   // ambientMode/forceTalk: el bot puede responder sin que lo mencionen.
   // forceTalk responde a TODO; ambientMode solo mete comentarios random
   // via el watcher de inactividad ya existente (no cambia este flujo).
-  const shouldRespond = isMentioned || isDM || flags.forceTalk;
+  const shouldRespond = isMentioned || isReplyToBot || isDM || flags.forceTalk;
   if (!shouldRespond) return;
 
   if (guildId) config.registerGuild(message.guild);
 
   const content = message.content.replace(/<@!?\d+>/g, '').trim();
   if (!content) return;
+  if (!isDM && !flags.forceTalk && !isNaturalPrompt(content)) return;
 
   // Si Lara o Gio preguntan directo por api key/modelo/tokens gastados
   // en texto plano (compatibilidad con el viejo estilo, ademas del slash
-  // command /modelstatus), el bot esta OBLIGADO a contestar con datos
+  // command /ai status), el bot esta OBLIGADO a contestar con datos
   // reales, sin pasar por la IA.
   const guildTokens = guildId ? await config.getTokenUsage(guildId).catch(() => null) : null;
   const wasApiKeyQuestion = await handleApiKeyQuestion(message, guildTokens).catch(err => {
@@ -232,7 +259,7 @@ client.on('messageCreate', async (message) => {
     const moodInfo = detectMood(context);
 
     // El mood "funador" (tono acusador con formato Discord) solo se usa si
-    // el server activo lo activo explicitamente con /funador activate.
+    // el server activo lo activo explicitamente con /bot funador activate.
     // Es reactivo unicamente: se dispara por lo que la persona ACABA de
     // escribir en este mensaje, nunca por vigilancia de mensajes previos
     // ni por iniciativa propia del bot.

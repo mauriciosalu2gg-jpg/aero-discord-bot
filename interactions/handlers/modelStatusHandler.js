@@ -1,5 +1,5 @@
 // interactions/handlers/modelStatusHandler.js
-// /modelstatus (reemplaza al viejo /fluxerstatus): le dice a Lara/Gio con
+// /ai status (reemplaza al viejo /fluxerstatus): le dice a Lara/Gio con
 // que compania y modelo esta corriendo ahora mismo, que otras companias
 // estan sanas y listas para tomar la posta, y los tokens gastados en ESTE
 // servidor en particular + el total acumulado en todos los servidores
@@ -54,7 +54,7 @@ export async function handleModelStatusCommand(interaction) {
   } else if (providerNames.length <= 1) {
     lines.push('No hay otras companias configuradas todavia -- agrega otra API Key en el .env para tener fallback (ej: OPENROUTER_API_KEY, que tiene modelos gratis).');
   } else {
-    lines.push('El resto de las companias configuradas estan en cooldown o con error ahora mismo, usa /provider para el detalle.');
+    lines.push('El resto de las companias configuradas estan en cooldown o con error ahora mismo, usa /ai providers para el detalle.');
   }
 
   const guildTokens = interaction.guildId ? await getGuildTokenUsage(interaction.guildId) : 0;

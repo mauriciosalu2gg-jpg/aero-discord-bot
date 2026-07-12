@@ -1,6 +1,7 @@
 // interactions/handlers/objecionHandler.js
-// /objecion [motivo] -> permite a un abogado (defensa o acusacion) de un
-// /funador activo interrumpir el interrogatorio con un "OBJECION!" comico.
+// /bot funador objecion [motivo] -> permite a un abogado (defensa o
+// acusacion) de un juicio activo interrumpir el interrogatorio con un
+// "OBJECION!" comico.
 //
 // COMO SI puede usarse:
 // - Debe haber un /funador en curso en ESE MISMO canal.
