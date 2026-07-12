@@ -24,12 +24,14 @@ export function buildSystemExtra({
 
   const isCreatorMsg = isOwner || isSubCreator;
 
-  // Moods que suenan cortantes/con actitud/regañones no aplican cuando
-  // habla un creador: se reemplazan por una version neutral-amigable, asi
-  // ni siquiera compite con el bloque de creatorPromptExtra mas abajo.
-  const SOFTEN_MOODS = new Set(['enojado', 'defensivo', 'dramatico']);
-  if (moodInfo && isCreatorMsg && SOFTEN_MOODS.has(moodInfo.mood)) {
-    parts.push('Tono normal, relajado y de buena onda -- podes seguir con humor y sarcasmo liviano, pero sin actitud cortante ni de reto.');
+  // Con el creador dejamos pasar el mood normal (asi el bot puede seguirle
+  // el juego si Lara/Gio rolean o le tiran actitud de broma), salvo el mood
+  // "enojado" -- ese especificamente asume que lo estan insultando/atacando
+  // de verdad, cosa que no corresponde asumir de un creador por default.
+  // Ese caso puntual se resuelve mas abajo con creatorPromptExtra en vez de
+  // con la instruccion de mood cruda.
+  if (moodInfo && isCreatorMsg && moodInfo.mood === 'enojado') {
+    parts.push('Tono relajado de buena onda -- si te esta jodiendo o retando el juego, seguile la corriente con tu humor normal, sin ponerte cortante ni a la defensiva de verdad.');
   } else if (moodInfo) {
     parts.push(moodInstruction(moodInfo));
   }
