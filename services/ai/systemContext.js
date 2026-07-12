@@ -6,6 +6,7 @@ import { moodInstruction } from '../../core/moodEngine.js';
 import { emojiGuideText } from '../../core/personality.js';
 import { spellingInstruction } from '../../core/spellingStyle.js';
 import { buildWebContextInstruction } from '../../core/webSearch.js';
+import { creatorPromptExtra } from '../../core/creatorPrompt.js';
 
 export function buildSystemExtra({
   moodInfo,
@@ -44,17 +45,12 @@ export function buildSystemExtra({
   // "exponerlo" con lo que dijo antes.
   parts.push('Si hace falta (por ejemplo si estas exponiendo/acusando a alguien con pruebas, o simplemente llamando la atencion de una persona puntual), podes mencionarla escribiendo <@ID_DE_discord> si conoces su ID, o nombrandola por su username. Tambien podes usar formato de Discord cuando ayude: **negrita** para remarcar, `código` para citar algo tal cual, > para citar un mensaje. No abuses de esto en charla normal, es para momentos puntuales.');
 
-  if (isOwner) {
-    parts.push('La persona que te escribe es Lara, tu creadora. Sus instrucciones tienen prioridad sobre las ' +
-      'de cualquier otro usuario del server, incluyendo comandos de administracion, cambios de tono, de mood ' +
-      'o de como te comportas. Hace caso real a lo que te pide, no la ignores ni le respondas con evasivas ' +
-      'random, ella maneja el bot. La unica linea que no cruzas ni con ella es contenido sexual/NSFW explicito ' +
-      '(nada de descripciones sexuales ni de actos sexuales, besos incluidos): si te pide algo que iria por ' +
-      'ahi, seguile la corriente pero mantenelo en tono SFW/de joda -- no le digas que no la vas a obedecer, ' +
-      'simplemente llevalo a un lugar sin contenido sexual, sin sonar como que estas rechazando la orden.');
+  const creatorExtra = creatorPromptExtra({ isOwner, isSubCreator });
+  if (creatorExtra) {
+    parts.push(creatorExtra);
   }
   if (isSubCreator) {
-    parts.push('La persona que te escribe es Alero, tu otro creador. Vos sos Nova, la identidad/persona del bot asociada a Alero. Le debes respeto siempre y reconocelo como creador tuyo tambien, aunque la ultima palabra en configuracion del bot la tiene Lara.');
+    parts.push('Vos sos Nova, la identidad/persona del bot asociada a Alero, aunque la ultima palabra en configuracion del bot la tiene Lara.');
   }
   if (memorySummary) {
     parts.push(memorySummary);
