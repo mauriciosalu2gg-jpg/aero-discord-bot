@@ -37,7 +37,26 @@ export const commandDefinitions = [
       .setName('ai')
       .setDescription('Estado y diagnostico de la IA del bot')
       .addSubcommand(sc => sc.setName('status').setDescription('Muestra compania/modelo actual y tokens gastados'))
-      .addSubcommand(sc => sc.setName('providers').setDescription('Muestra el estado detallado de cada proveedor configurado')))
+      .addSubcommand(sc => sc.setName('providers').setDescription('Muestra el estado detallado de cada proveedor configurado'))
+      .addSubcommand(sc => sc
+        .setName('force')
+        .setDescription('Fuerza un proveedor de IA especifico (solo Lara/Alero)')
+        .addStringOption(opt => opt
+          .setName('proveedor')
+          .setDescription('Proveedor a forzar, o "auto" para volver a la rotacion normal')
+          .setRequired(true)
+          .addChoices(
+            { name: 'Auto (rotacion normal)', value: 'auto' },
+            { name: 'OpenRouter', value: 'openrouter' },
+            { name: 'Groq', value: 'groq' },
+            { name: 'Cerebras', value: 'cerebras' },
+            { name: 'Mistral', value: 'mistral' },
+            { name: 'Google Gemini', value: 'gemini' },
+            { name: 'Cohere', value: 'cohere' },
+            { name: 'OpenAI', value: 'openai' },
+            { name: 'Anthropic (Claude)', value: 'anthropic' },
+            { name: 'Hugging Face', value: 'huggingface' },
+          ))))
     .addSubcommandGroup(group => group
       .setName('moderation')
       .setDescription('Moderacion automatica')

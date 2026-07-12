@@ -23,6 +23,22 @@ const RETRYABLE_PATTERNS = [
   /credit/i,
 ];
 
+// Patrones que indican que el MODELO puntual no existe/no esta disponible
+// (no el proveedor entero). Ej: OpenRouter "No endpoints found for X",
+// HTTP 404 de un nombre de modelo viejo o mal escrito. Esto amerita saltar
+// al siguiente modelo de la escalera del mismo proveedor sin gastar un
+// cooldown largo, ya que no es un problema temporal sino un modelo
+// invalido/retirado.
+const MODEL_NOT_FOUND_PATTERNS = [
+  /no endpoints found/i,
+  /model_not_found/i,
+  /model not found/i,
+  /does not exist/i,
+  /unknown model/i,
+  /invalid model/i,
+  /\bmodel\b.*\bnot\b.*\bavailable\b/i,
+];
+
 /**
  * Determina si un error amerita saltar al siguiente proveedor en la cadena
  * de fallback, en vez de propagarse como fallo definitivo.
@@ -31,9 +47,24 @@ const RETRYABLE_PATTERNS = [
  * @returns {boolean}
  */
 export function isRetryableProviderError(error, statusCode) {
+  if (isModelNotFoundError(error, statusCode)) return true;
   if (statusCode === 429 || statusCode === 503 || statusCode === 502) return true;
   const message = typeof error === 'string' ? error : (error?.message || '');
   return RETRYABLE_PATTERNS.some(pattern => pattern.test(message));
+}
+
+/**
+ * @param {Error|string} error
+ * @param {number} [statusCode]
+ * @returns {boolean} true si el modelo puntual no existe/fue retirado
+ * (HTTP 404, "no endpoints found", etc), a diferencia de un fallo
+ * temporal del proveedor entero.
+ */
+export function isModelNotFoundError(error, statusCode) {
+  const message = typeof error === 'string' ? error : (error?.message || '');
+  if (MODEL_NOT_FOUND_PATTERNS.some(pattern => pattern.test(message))) return true;
+  if (statusCode === 404) return true;
+  return false;
 }
 
 /**
@@ -44,6 +75,7 @@ export function isRetryableProviderError(error, statusCode) {
  */
 export function classifyFailureReason(error, statusCode) {
   const message = typeof error === 'string' ? error : (error?.message || '');
+  if (isModelNotFoundError(error, statusCode)) return 'Model not available';
   if (/quota|resource_exhausted|daily limit|insufficient_quota/i.test(message)) return 'cuota agotada';
   if (/rate.?limit|too many requests|\b429\b/i.test(message) || statusCode === 429) return 'rate limit';
   if (/capacity|overloaded|high demand/i.test(message)) return 'sobrecarga del proveedor';
@@ -58,10 +90,11 @@ export function classifyFailureReason(error, statusCode) {
  * Clasifica el error en un "kind" usado para decidir cuánto dura el cooldown.
  * @param {Error|string} error
  * @param {number} [statusCode]
- * @returns {'quota'|'rateLimit'|'overloaded'|'offline'|'generic'}
+ * @returns {'quota'|'rateLimit'|'overloaded'|'offline'|'modelNotFound'|'generic'}
  */
 export function classifyFailureKind(error, statusCode) {
   const message = typeof error === 'string' ? error : (error?.message || '');
+  if (isModelNotFoundError(error, statusCode)) return 'modelNotFound';
   if (/quota|resource_exhausted|daily limit|insufficient_quota/i.test(message)) return 'quota';
   if (/rate.?limit|too many requests|\b429\b/i.test(message) || statusCode === 429) return 'rateLimit';
   if (/capacity|overloaded|high demand/i.test(message)) return 'overloaded';
@@ -69,4 +102,4 @@ export function classifyFailureKind(error, statusCode) {
   return 'generic';
 }
 
-export default { isRetryableProviderError, classifyFailureReason, classifyFailureKind };
+export default { isRetryableProviderError, isModelNotFoundError, classifyFailureReason, classifyFailureKind };

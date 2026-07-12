@@ -20,6 +20,7 @@ import {
   getActiveProvider,
   setActiveProvider,
   clearActiveProvider,
+  getForcedProvider,
 } from './providerHealth.js';
 
 function fmtMs(ms) {
@@ -37,6 +38,34 @@ function fmtMs(ms) {
 export async function dispatchWithFallback({ providers, history, systemExtra }) {
   const attempts = [];
   const byName = new Map(providers.map(p => [p.name, p]));
+
+  // ── 0. Forzado manual ("/bot ai force <proveedor>") por creador/subcreador:
+  //       si esta activo y el proveedor forzado sigue en la lista disponible,
+  //       se intenta SOLO ese proveedor (con su escalera normal), ignorando
+  //       prioridad, cache y el resto de la cadena. Si el forzado no esta
+  //       disponible (sin API key) o falla del todo, se informa el error en
+  //       vez de caer silenciosamente a otro proveedor -- es un modo de
+  //       prueba explicito, no debe disfrazar el resultado.
+  const forced = getForcedProvider();
+  if (forced) {
+    if (!byName.has(forced)) {
+      const err = new Error(`Proveedor forzado "${forced}" no tiene API Key configurada o no existe.`);
+      err.attempts = attempts;
+      throw err;
+    }
+    const provider = byName.get(forced);
+    const models = provider.models.length ? provider.models : [undefined];
+    for (const model of models) {
+      const result = await tryOnce(provider, model, history, systemExtra, attempts);
+      if (result) return result;
+      const last = attempts[attempts.length - 1];
+      if (!last.retryable) break;
+    }
+    const trail = attempts.map(a => `${a.provider}/${a.model}: ${a.reason}`).join(' → ');
+    const err = new Error(`Proveedor forzado "${forced}" fallo en todos sus modelos. Intentos: ${trail}`);
+    err.attempts = attempts;
+    throw err;
+  }
 
   // ── 1. Intentar primero el proveedor activo cacheado, si sigue disponible
   //       y sigue estando en la lista de proveedores con API Key. ──
@@ -114,8 +143,9 @@ async function tryOnce(provider, model, history, systemExtra, attempts) {
     console.warn(`[AI] ${provider.name} (${model}) falló: ${reason}`);
 
     if (retryable) {
-      const cooldownMs = markCooldown(provider.name, kind);
-      console.log(`[AI] ${provider.name} → Cooldown ${fmtMs(cooldownMs)}`);
+      const cooldownMs = markCooldown(provider.name, kind, err.retryAfterMs);
+      const source = (Number.isFinite(err.retryAfterMs) && err.retryAfterMs > 0) ? 'Retry-After' : 'default';
+      console.log(`[AI] ${provider.name} → Cooldown ${fmtMs(cooldownMs)} (${source})`);
     }
 
     if (getActiveProviderName() === provider.name) {

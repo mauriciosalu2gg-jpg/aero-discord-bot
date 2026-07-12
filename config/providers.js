@@ -49,7 +49,8 @@ export const MODEL_LADDERS = {
   ],
   openrouter: [
     'meta-llama/llama-3.3-70b-instruct:free',
-    'google/gemini-2.0-flash-exp:free',
+    'google/gemini-2.0-flash-001',
+    'google/gemini-flash-1.5-8b',
   ],
   huggingface: [
     'meta-llama/Llama-3.3-70B-Instruct',
@@ -74,10 +75,26 @@ export const COOLDOWN_MS = {
     rateLimit: 10 * 60 * 1000,   // rate limit: 10 min
     overloaded: 5 * 60 * 1000,   // alta demanda / overloaded: 5 min
     offline: 2 * 60 * 1000,      // error de red / servicio caído: 2 min
+    modelNotFound: 60 * 60 * 1000, // modelo retirado/no existe: 60 min (no se va a arreglar solo)
     generic: 3 * 60 * 1000,      // cualquier otro error retryable: 3 min
   },
   // Overrides opcionales por proveedor, ej:
   // groq: { overloaded: 2 * 60 * 1000 },
+};
+
+/**
+ * URLs de descubrimiento de modelos por proveedor (API oficial de listado,
+ * formato OpenAI-compatible "GET /models" -> { data: [{ id: '...' }] }).
+ * Se usan para validar que los modelos de MODEL_LADDERS siguen existiendo
+ * antes de intentar usarlos, y para refrescar la cache periodicamente.
+ * Proveedores sin URL aca simplemente no se validan dinamicamente (se
+ * confia en MODEL_LADDERS tal cual).
+ */
+export const MODEL_DISCOVERY_URLS = {
+  openrouter: 'https://openrouter.ai/api/v1/models',
+  groq: 'https://api.groq.com/openai/v1/models',
+  mistral: 'https://api.mistral.ai/v1/models',
+  cerebras: 'https://api.cerebras.ai/v1/models',
 };
 
 /**
@@ -162,6 +179,7 @@ export default {
   PROVIDER_PRIORITY,
   MODEL_LADDERS,
   COOLDOWN_MS,
+  MODEL_DISCOVERY_URLS,
   MAX_TOKENS,
   REPETITION_CONTROLS,
   REQUEST_TIMEOUT_MS,

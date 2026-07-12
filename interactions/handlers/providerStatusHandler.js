@@ -5,7 +5,7 @@
 // cooldown restante y latencia promedio. Disponible para cualquiera
 // (solo lectura, no cambia nada).
 import secrets from '../../secrets.js';
-import { getActiveProvider, getAllSnapshots } from '../../services/ai/providerHealth.js';
+import { getActiveProvider, getAllSnapshots, getForcedProvider } from '../../services/ai/providerHealth.js';
 
 const STATUS_EMOJI = {
   Healthy: '🟢',
@@ -13,6 +13,7 @@ const STATUS_EMOJI = {
   'Rate Limited': '🟠',
   'Quota Exceeded': '🔴',
   Offline: '⚫',
+  Unavailable: '⛔',
 };
 
 const PROVIDER_DISPLAY_NAMES = {
@@ -54,9 +55,13 @@ export async function handleProviderStatusCommand(interaction) {
 
   const snapshots = getAllSnapshots(configuredNames);
   const active = getActiveProvider();
+  const forced = getForcedProvider();
 
   const lines = [];
   lines.push('**🧠 Estado del orquestador de IA**');
+  if (forced) {
+    lines.push(`🔒 **Forzado manualmente a:** ${displayName(forced)} (usa \`/bot ai force auto\` para volver a la rotacion normal)`);
+  }
   lines.push(
     active
       ? `**Proveedor activo:** ${displayName(active.name)}  |  **Modelo:** \`${active.model || '—'}\``

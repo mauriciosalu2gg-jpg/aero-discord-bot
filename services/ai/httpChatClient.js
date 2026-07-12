@@ -52,6 +52,14 @@ export async function chatCompletionsRequest({
     const message = data.error?.message || data.error || `HTTP ${res.status}`;
     const err = new Error(message);
     err.statusCode = res.status;
+    const retryAfterHeader = res.headers.get('retry-after');
+    if (retryAfterHeader) {
+      const asSeconds = Number(retryAfterHeader);
+      err.retryAfterMs = Number.isFinite(asSeconds)
+        ? asSeconds * 1000
+        : (new Date(retryAfterHeader).getTime() - Date.now());
+      if (!Number.isFinite(err.retryAfterMs) || err.retryAfterMs < 0) err.retryAfterMs = null;
+    }
     throw err;
   }
 

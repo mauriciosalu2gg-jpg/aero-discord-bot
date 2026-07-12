@@ -5,6 +5,7 @@
 // La prioridad, escalera de modelos, cooldowns, etc. viven en config/providers.js.
 import 'dotenv/config';
 import { PROVIDER_PRIORITY, getModelLadder } from './config/providers.js';
+import { filterValidModels } from './services/ai/modelValidator.js';
 
 const SECRETS = {
   discordToken: process.env.DISCORD_TOKEN || '',
@@ -35,7 +36,8 @@ function getAvailableProviders() {
   for (const name of PROVIDER_PRIORITY) {
     const data = SECRETS.providers[name];
     if (data && data.apiKey && data.apiKey.trim() !== '') {
-      activos.push({ name, apiKey: data.apiKey, models: getModelLadder(name) });
+      const models = filterValidModels(name, getModelLadder(name));
+      activos.push({ name, apiKey: data.apiKey, models });
     }
   }
   return activos;

@@ -4,6 +4,7 @@ import http from 'node:http';
 import config from './config.js';
 import secrets from './secrets.js';
 import { askAI, startConfigRefresh } from './services/aiManager.js';
+import { validateAllProviders } from './services/ai/modelValidator.js';
 
 import { getMemory, saveMemory } from './core/memory.js';
 import { isOwner, isSubCreator } from './core/permissions.js';
@@ -76,6 +77,14 @@ client.once('ready', async () => {
   startConfigRefresh(5);
   config.updateBotStatus(client, lastAIResponse);
   setInterval(() => config.updateBotStatus(client, lastAIResponse), 30000);
+
+  // Valida contra la API oficial de cada proveedor que sus modelos
+  // configurados en config/providers.js todavia existan, ANTES de que un
+  // usuario dispare un 404 en produccion por un modelo retirado. No
+  // bloquea el arranque del bot si tarda o falla (fail-open).
+  validateAllProviders(secrets.getAvailableProviders())
+    .then(() => console.log('[modelValidator] Validacion de modelos completada.'))
+    .catch(err => console.warn('[modelValidator] Error validando modelos:', err.message));
 
   // Precarga desde Firestore los flags de comportamiento y el estado de
   // moderacion/strikes de cada servidor, para no perder configuracion en

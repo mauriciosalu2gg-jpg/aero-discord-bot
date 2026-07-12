@@ -11,6 +11,7 @@ export const HEALTH_STATUS = {
   RATE_LIMITED: 'Rate Limited',
   QUOTA_EXCEEDED: 'Quota Exceeded',
   OFFLINE: 'Offline',
+  UNAVAILABLE: 'Unavailable',
 };
 
 // Umbral de latencia (ms) por encima del cual se marca "Slow" tras un éxito.
@@ -60,11 +61,13 @@ export function getCooldownRemainingMs(name) {
  * Marca un proveedor en cooldown según el tipo de fallo, actualizando su
  * estado de salud correspondiente.
  * @param {string} name
- * @param {'quota'|'rateLimit'|'overloaded'|'offline'|'generic'} kind
+ * @param {'quota'|'rateLimit'|'overloaded'|'offline'|'modelNotFound'|'generic'} kind
+ * @param {number} [retryAfterMs] - si el proveedor mando un header Retry-After
+ * valido, se usa este valor en vez del cooldown por defecto de ese kind.
  */
-export function markCooldown(name, kind) {
+export function markCooldown(name, kind, retryAfterMs) {
   const s = ensure(name);
-  const ms = getCooldownMs(name, kind);
+  const ms = (Number.isFinite(retryAfterMs) && retryAfterMs > 0) ? retryAfterMs : getCooldownMs(name, kind);
   s.cooldownUntil = Date.now() + ms;
   s.lastCooldownKind = kind;
   s.status = kindToStatus(kind);
@@ -77,8 +80,27 @@ function kindToStatus(kind) {
     case 'rateLimit': return HEALTH_STATUS.RATE_LIMITED;
     case 'overloaded': return HEALTH_STATUS.RATE_LIMITED;
     case 'offline': return HEALTH_STATUS.OFFLINE;
+    case 'modelNotFound': return HEALTH_STATUS.OFFLINE;
     default: return HEALTH_STATUS.OFFLINE;
   }
+}
+
+/**
+ * Marca un proveedor como Unavailable de forma persistente (hasta el proximo
+ * restart o hasta que se revalide), tipicamente porque ninguno de sus
+ * modelos configurados existe segun la validacion de arranque. A diferencia
+ * de markCooldown, esto no tiene vencimiento automatico -- se usa cuando el
+ * problema es de configuracion, no temporal.
+ * @param {string} name
+ * @param {string} [reason]
+ */
+export function markUnavailable(name, reason) {
+  const s = ensure(name);
+  s.status = HEALTH_STATUS.UNAVAILABLE;
+  s.cooldownUntil = Date.now() + 24 * 60 * 60 * 1000; // 24h, se revalida en el proximo restart igual
+  s.lastCooldownKind = 'modelNotFound';
+  s.stats.lastError = reason || 'Ningún modelo configurado esta disponible';
+  s.stats.lastErrorAt = Date.now();
 }
 
 /**
@@ -189,11 +211,32 @@ export function clearActiveProvider() {
   activeProviderSetAt = 0;
 }
 
+// ── Forzado manual por el creador/subcreador ("/bot ai force <proveedor>") ──
+// Si esta seteado, dispatchWithFallback SOLO intenta este proveedor (con
+// su escalera normal de modelos), ignorando prioridad y cache normal, para
+// poder probar un proveedor puntual a pedido. No tiene expiracion automatica
+// por tiempo: se limpia con el mismo comando ("/bot ai force auto") o al
+// reiniciar el proceso.
+let forcedProviderName = null;
+
+export function getForcedProvider() {
+  return forcedProviderName;
+}
+
+export function setForcedProvider(name) {
+  forcedProviderName = name || null;
+}
+
+export function clearForcedProvider() {
+  forcedProviderName = null;
+}
+
 export default {
   HEALTH_STATUS,
   isOnCooldown,
   getCooldownRemainingMs,
   markCooldown,
+  markUnavailable,
   recordFailure,
   recordSuccess,
   getAverageLatency,
@@ -202,4 +245,7 @@ export default {
   getActiveProvider,
   setActiveProvider,
   clearActiveProvider,
+  getForcedProvider,
+  setForcedProvider,
+  clearForcedProvider,
 };
