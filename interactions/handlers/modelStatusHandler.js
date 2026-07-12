@@ -1,5 +1,5 @@
 // interactions/handlers/modelStatusHandler.js
-// /ai status (reemplaza al viejo /fluxerstatus): le dice a Lara/Gio con
+// /ai status (reemplaza al viejo /fluxerstatus): le dice a Lara/Alero con
 // que compania y modelo esta corriendo ahora mismo, que otras companias
 // estan sanas y listas para tomar la posta, y los tokens gastados en ESTE
 // servidor en particular + el total acumulado en todos los servidores

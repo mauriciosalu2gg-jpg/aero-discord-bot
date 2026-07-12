@@ -1,7 +1,7 @@
 // interactions/interactionCreate.js
 // Punto de entrada unico para /bot. Algunas ramas son abiertas
-// (ai y funador objecion); el resto queda restringido a Lara/Gio.
-import { isCreatorOrSubCreator } from '../core/permissions.js';
+// (ai y funador objecion); el resto queda restringido a Lara/Alero.
+import { isAdminOrHigher, isCreatorOrSubCreator } from '../core/permissions.js';
 import { handleConfigCommand } from './handlers/configHandler.js';
 import { handleModerationCommand } from './handlers/moderationHandler.js';
 import { handleResetMemoryCommand } from './handlers/resetMemoryHandler.js';
@@ -21,9 +21,20 @@ export async function handleInteraction(interaction) {
 
   const group = interaction.options.getSubcommandGroup(false);
 
-  if (!isOpenRoute(interaction) && !isCreatorOrSubCreator(interaction.user)) {
-    await interaction.reply({ content: 'ese comando solo lo pueden usar Lara o Gio', ephemeral: true });
-    return;
+  if (!isOpenRoute(interaction)) {
+    const allowed = group === 'moderation'
+      ? isAdminOrHigher(interaction.user)
+      : isCreatorOrSubCreator(interaction.user);
+
+    if (!allowed) {
+      await interaction.reply({
+        content: group === 'moderation'
+          ? 'ese comando solo lo pueden usar Lara, Alero o un admin autorizado'
+          : 'ese comando solo lo pueden usar Lara o Alero',
+        ephemeral: true,
+      });
+      return;
+    }
   }
 
   try {

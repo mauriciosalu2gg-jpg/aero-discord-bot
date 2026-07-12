@@ -1,12 +1,11 @@
 // core/permissions.js
-// Sistema de roles: creator (Lara) > subCreator (Gio) > admin > user.
+// Sistema de roles: creator (Lara) > subCreator (Alero/Nova) > admin > user.
 //
 // - creator (Lara): dueña del bot, sus instrucciones tienen prioridad sobre
 //   cualquier otro usuario, incluyendo comandos de administracion del bot.
-// - subCreator (Gio): el otro creador del bot, le dio imagen, descripcion y
-//   apariencia (el bot es "little gio"/"mini gio", version mas joven del OC
-//   original de Gio). El bot esta obligado a respetarlo siempre, como a un
-//   "hermano mayor"/creador tambien, aunque el ultimo permiso final es de Lara.
+// - subCreator (Alero): el otro creador del bot. El bot esta obligado a
+//   respetarlo siempre como creador tambien, aunque el ultimo permiso final
+//   es de Lara.
 // El owner/creator se detecta por Discord ID (recomendado, configuralo en
 // .env) y como respaldo por username por si el ID no esta configurado.
 
@@ -53,7 +52,7 @@ export function isSubCreator(user) {
   return getRole(user) === ROLES.SUB_CREATOR;
 }
 
-// Lara y Gio son ambos "creadores" del bot: el bot les debe respeto y
+// Lara y Alero son ambos "creadores" del bot: el bot les debe respeto y
 // reconocimiento especial a los dos, aunque solo Lara tiene la ultima
 // palabra en configuracion/administracion.
 export function isCreatorOrSubCreator(user) {
@@ -63,7 +62,7 @@ export function isCreatorOrSubCreator(user) {
 
 export function isAdminOrHigher(user) {
   const role = getRole(user);
-  return role === ROLES.CREATOR || role === ROLES.ADMIN;
+  return role === ROLES.CREATOR || role === ROLES.SUB_CREATOR || role === ROLES.ADMIN;
 }
 
 export default {

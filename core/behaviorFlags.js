@@ -1,5 +1,5 @@
 // core/behaviorFlags.js
-// Flags de comportamiento controlables por Lara o Gio, por servidor:
+// Flags de comportamiento controlables por Lara o Alero, por servidor:
 // - swearing: si el bot puede decir groserias (ON por defecto)
 // - factsAutoplay: si puede tirar datos curiosos solo cuando el chat esta muerto
 // - ambientMode: si el bot comenta espontaneamente mas seguido en el canal
@@ -55,7 +55,7 @@ export async function setFlag(guildId, key, value) {
 }
 
 // Se llama al arrancar el bot para precargar los flags guardados de cada
-// servidor, asi no se pierden los ajustes de Lara/Gio en cada reinicio.
+// servidor, asi no se pierden los ajustes de Lara/Alero en cada reinicio.
 export async function hydrateFlags() {
   if (!db) return;
   try {

@@ -19,7 +19,7 @@
 // COMO NO puede usarse:
 // - No funciona fuera de un canal con juicio activo.
 // - No lo puede usar el acusado, el acusador, un testigo, ni nadie que no
-//   haya sido etiquetado como abogado (Lara/Gio incluidos, salvo que ellos
+//   haya sido etiquetado como abogado (Lara/Alero incluidos, salvo que ellos
 //   mismos hayan sido tageados como abogados en esa sesion).
 // - No sirve para "objetar" fuera de la sala del juicio (otro canal) ni
 //   para parar el juicio del todo -- es un efecto narrativo de comedia,

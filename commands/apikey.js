@@ -1,5 +1,5 @@
 // commands/apikey.js
-// Cuando Lara o Gio le preguntan al bot directamente que modelo o compañia
+// Cuando Lara o Alero le preguntan al bot directamente que modelo o compañia
 // de IA esta usando, el bot esta OBLIGADO a contestar con datos reales
 // (proveedor/compañia, modelo activo, tokens gastados en este server).
 // Nunca se menciona la api key en si (ni para decir que es secreta ni nada
@@ -79,7 +79,7 @@ export async function buildForcedStatusReply(guildTokensUsedTotal = null) {
 }
 
 /**
- * Maneja el mensaje si Lara o Gio preguntan directamente por esto. Devuelve
+ * Maneja el mensaje si Lara o Alero preguntan directamente por esto. Devuelve
  * true si ya respondio (para que index.js no siga al flujo normal de IA).
  */
 export async function handleApiKeyQuestion(message, guildTokensUsedTotal) {

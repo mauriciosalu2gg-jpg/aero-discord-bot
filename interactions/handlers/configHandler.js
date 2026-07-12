@@ -10,7 +10,7 @@
 //   /bot config groserias on/off -> control fino de groserias
 //   /bot config datos on/off     -> control fino de datos curiosos autonomos
 //
-// Exclusivo de Lara/Gio (se valida ademas en interactionCreate.js).
+// Exclusivo de Lara/Alero (se valida ademas en interactionCreate.js).
 import { setFlag } from '../../core/behaviorFlags.js';
 
 export async function handleConfigCommand(interaction) {

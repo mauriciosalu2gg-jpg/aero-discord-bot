@@ -117,6 +117,8 @@ client.on('interactionCreate', handleInteraction);
 async function runAutoModeration(message) {
   const guildId = message.guild?.id;
   if (!guildId || !isModerationActive(guildId)) return false;
+  const botMember = message.guild.members.me;
+  const botHasAdmin = !!botMember?.permissions?.has?.('Administrator');
 
   // Un insulto "va dirigido a alguien" si menciona a otro usuario humano,
   // o si es una respuesta directa (reply) a otro mensaje -- ambas son
@@ -142,29 +144,53 @@ async function runAutoModeration(message) {
         });
         break;
       case 'timeout':
-        if (member?.moderatable) {
-          await member.timeout(sanction.durationMs, 'Moderacion automatica: falta de respeto repetida');
+        let timeoutApplied = false;
+        try {
+          if (member && (botHasAdmin || member.moderatable)) {
+            await member.timeout(sanction.durationMs, 'Moderacion automatica: falta de respeto repetida');
+            timeoutApplied = true;
+          }
+        } catch (err) {
+          console.error('[moderation] timeout fallido:', err.message);
         }
         await message.channel.send({
-          content: `🔇 <@${message.author.id}> timeout de ${sanction.label}. Vuelve a hablar cuando termine.\n⏳ Tiempo estimado: <t:${Math.floor((Date.now() + sanction.durationMs) / 1000)}:R> (Finaliza: <t:${Math.floor((Date.now() + sanction.durationMs) / 1000)}:F>)`,
+          content: timeoutApplied
+            ? `🔇 <@${message.author.id}> timeout de ${sanction.label}. Vuelve a hablar cuando termine.\n⏳ Tiempo estimado: <t:${Math.floor((Date.now() + sanction.durationMs) / 1000)}:R>`
+            : `⚠️ no pude aplicar el timeout a <@${message.author.id}> porque me faltan permisos o el usuario tiene un rol superior.`,
           allowedMentions: { users: [message.author.id] },
         });
         break;
       case 'kick':
-        if (member?.kickable) {
-          await member.kick('Moderacion automatica: falta de respeto repetida');
+        let kickApplied = false;
+        try {
+          if (member && (botHasAdmin || member.kickable)) {
+            await member.kick('Moderacion automatica: falta de respeto repetida');
+            kickApplied = true;
+          }
+        } catch (err) {
+          console.error('[moderation] kick fallido:', err.message);
         }
         await message.channel.send({
-          content: `👢 <@${message.author.id}> fue expulsado por reincidir.`,
+          content: kickApplied
+            ? `👢 <@${message.author.id}> fue expulsado por reincidir.`
+            : `⚠️ no pude expulsar a <@${message.author.id}> porque me faltan permisos o el usuario tiene un rol superior.`,
           allowedMentions: { users: [message.author.id] },
         });
         break;
       case 'ban':
-        if (member?.bannable) {
-          await member.ban({ reason: 'Moderacion automatica: falta de respeto repetida (limite alcanzado)' });
+        let banApplied = false;
+        try {
+          if (member && (botHasAdmin || member.bannable)) {
+            await member.ban({ reason: 'Moderacion automatica: falta de respeto repetida (limite alcanzado)' });
+            banApplied = true;
+          }
+        } catch (err) {
+          console.error('[moderation] ban fallido:', err.message);
         }
         await message.channel.send({
-          content: `🔨 <@${message.author.id}> fue baneado por reincidir despues de varios avisos.`,
+          content: banApplied
+            ? `🔨 <@${message.author.id}> fue baneado por reincidir despues de varios avisos.`
+            : `⚠️ no pude banear a <@${message.author.id}> porque me faltan permisos o el usuario tiene un rol superior.`,
           allowedMentions: { users: [message.author.id] },
         });
         break;
@@ -236,7 +262,7 @@ client.on('messageCreate', async (message) => {
   if (!content) return;
   if (!isDM && !flags.forceTalk && !isNaturalPrompt(content)) return;
 
-  // Si Lara o Gio preguntan directo por api key/modelo/tokens gastados
+  // Si Lara o Alero preguntan directo por api key/modelo/tokens gastados
   // en texto plano (compatibilidad con el viejo estilo, ademas del slash
   // command /ai status), el bot esta OBLIGADO a contestar con datos
   // reales, sin pasar por la IA.
@@ -251,7 +277,12 @@ client.on('messageCreate', async (message) => {
     // 1. Memoria persistente del canal (separada por servidor, en Firestore)
     const memory = await getMemory(channelId, guildId);
     memory.messages = memory.messages || [];
-    memory.messages.push({ role: 'user', content, authorName: message.author.username });
+    memory.messages.push({
+      role: 'user',
+      content,
+      authorName: message.author.username,
+      displayName: message.member?.displayName || message.author.globalName || message.author.username,
+    });
 
     // 2. Contexto (quien habla, mood dinamico con intensidad, si es Lara)
     const context = analyzeContext(memory.messages, message, client.user.id);

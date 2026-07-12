@@ -57,7 +57,12 @@ const HISTORY_CHAR_LIMIT = 1400;
 
 function formatDiscordTime(ms, label = '⏳ Tiempo estimado') {
   const unix = Math.floor((Date.now() + ms) / 1000);
-  return `${label}: <t:${unix}:R> (Finaliza: <t:${unix}:F>)`;
+  return `${label}: <t:${unix}:R>`;
+}
+
+function formatUserLabel(user, mention) {
+  const displayName = user?.globalName || user?.displayName || user?.username;
+  return displayName ? `${mention} (${displayName})` : mention;
 }
 
 // Recorta un bloque de texto (historial o testimonios ya unidos) a un
@@ -77,7 +82,7 @@ const activeSessions = new Set();
 // channelId -> { targetId, initiatorId, defenseLawyerIds:Set, accuserLawyerIds:Set }
 // Se llena en cuanto se conocen los abogados de cada bando, y se borra al
 // terminar la sesion. Lo usa /objecion para validar quien puede objetar y
-// contra que bando, sin tener que ser Lara/Gio.
+// contra que bando, sin tener que ser Lara/Alero.
 const sessionRoles = new Map();
 
 // channelId -> Array de objeciones pendientes de aplicar en la proxima
@@ -598,6 +603,8 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
   const channelId = channel.id;
   const initiatorMention = `<@${interaction.user.id}>`;
   const targetMention = `<@${targetUser.id}>`;
+  const initiatorLabel = formatUserLabel(interaction.user, initiatorMention);
+  const targetLabel = formatUserLabel(targetUser, targetMention);
 
   const sendAck = async (payload) => {
     if (interaction.deferred || interaction.replied) {
@@ -636,15 +643,15 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
       );
 
       const contextPrompt =
-        `Juicio de mentira contra ${targetMention}. Chat reciente:\n${historyText || '(sin historial reciente)'}\n\n` +
-        `Resumi en 2-3 lineas que acusaciones le podrian caber a ${targetMention} SOLO segun lo de arriba. ` +
+        `Juicio de mentira contra ${targetLabel}. Chat reciente:\n${historyText || '(sin historial reciente)'}\n\n` +
+        `Resumi en 2-3 lineas que acusaciones le podrian caber a ${targetLabel} SOLO segun lo de arriba. ` +
         `Si no hay casi nada, decí "sin contexto especifico".`;
       const contextResp = await askAI([{ role: 'user', content: contextPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
       juicioContext = contextResp?.text?.trim() || 'sin contexto especifico';
     }
 
     // ── 1. Consentimiento del acusado, obligatorio ──────────────────────
-    const accepted = await askConsentWithButtons(channel, targetUser, initiatorMention, targetMention, razonLimpia);
+    const accepted = await askConsentWithButtons(channel, targetUser, initiatorLabel, targetLabel, razonLimpia);
     if (!accepted) {
       await channel.send(`bueno, quedamos ahi entonces, no hay juicio 🤝 (${targetMention} no dijo que si o no contesto a tiempo)`);
       return;
@@ -686,12 +693,12 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
     const memory = await getMemory(channelId, guild?.id).catch(() => ({ messages: [] }));
     const recentText = (memory.messages || [])
       .slice(-25)
-      .map(m => `${m.authorName || m.role}: ${m.content}`)
+      .map(m => `${m.authorName || m.displayName || m.role || 'alguien'}: ${m.content}`)
       .join('\n');
 
     // Clasifica a cada testigo como a-favor/en-contra y recorta cada bando
     // al tope MAX_WITNESSES_PER_SIDE, para que no se sumen 15 personas.
-    const { kept: witnesses, leftOut } = await classifyAndCapWitnesses(guild, channel.name, targetMention, rawWitnesses, recentText);
+    const { kept: witnesses, leftOut } = await classifyAndCapWitnesses(guild, channel.name, targetLabel, rawWitnesses, recentText);
     const witnessMentions = witnesses.map(w => `<@${w.id}>`);
 
     if (leftOut.length) {
@@ -713,7 +720,7 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
     await channel.send({ content: rolesSummary, allowedMentions: { users: [...new Set([targetUser.id, interaction.user.id, ...lawyerUsers.map(u => u.id), ...accuserLawyerUsers.map(u => u.id), ...witnesses.map(u => u.id)])] } });
 
     const fiscaliaPrompt =
-      `Apertura de la fiscalia, juicio de mentira contra ${targetMention} (${targetMention} acepto jugar, ${initiatorMention} lo propuso). ` +
+      `Apertura de la fiscalia, juicio de mentira contra ${targetLabel} (${targetMention} acepto jugar, ${initiatorLabel} lo propuso). ` +
       `Usa SOLO el tema dado y el historial (no inventes acusaciones nuevas). ` +
       `TEMA: ${juicioContext}\n${STYLE_RULES}\n` +
       `Historial:\n${capText(recentText) || '(casi sin historial, usa el tema)'}`;
@@ -725,7 +732,7 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
     await pause(channel, 1500);
     await channel.send(`🎤 Turno de la defensa. ${targetMention}, empecemos.`);
     const defenseText = await interrogate(
-      channel, guild, targetUser.id, targetMention, targetMention,
+      channel, guild, targetUser.id, targetMention, targetLabel,
       `${targetMention}, ¿que pruebas o defensa tenes para este juicio?`,
       'acusado'
     );
@@ -749,7 +756,7 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
       await pause(channel, 1200);
       await channel.send(`🎤 ${wMention}, tu turno de testigo.`);
       const t = await interrogate(
-        channel, guild, witness.id, wMention, targetMention,
+        channel, guild, witness.id, wMention, targetLabel,
         `${wMention}, ¿que tenes para declarar sobre ${targetMention}?`,
         'testigo'
       );
@@ -766,7 +773,7 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
       await pause(channel, 1200);
       await channel.send(`🎤 ${lMention}, tu turno como defensa de ${targetMention}.`);
       const l = await interrogate(
-        channel, guild, lawyer.id, lMention, targetMention,
+        channel, guild, lawyer.id, lMention, targetLabel,
         `${lMention}, ¿que argumentas a favor de ${targetMention}?`,
         'abogado defensor'
       );
@@ -777,7 +784,7 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
       await pause(channel, 1200);
       await channel.send(`🎤 ${lMention}, tu turno apoyando la acusacion contra ${targetMention}.`);
       const l = await interrogate(
-        channel, guild, lawyer.id, lMention, targetMention,
+        channel, guild, lawyer.id, lMention, targetLabel,
         `${lMention}, ¿que argumentas en contra de ${targetMention}?`,
         'abogado de la acusacion'
       );
@@ -788,7 +795,7 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
     await pause(channel, 1200);
     await channel.send(`🎤 Por ultimo, ${initiatorMention} (quien pidio el juicio) tambien tiene derecho a declarar.`);
     const accuserTestimony = await interrogate(
-      channel, guild, interaction.user.id, initiatorMention, targetMention,
+      channel, guild, interaction.user.id, initiatorMention, targetLabel,
       `${initiatorMention}, ¿algo mas que quieras agregar como acusador/a?`,
       'acusador', 1
     );
@@ -800,10 +807,10 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
     // del contra-argumento/veredicto sin alargar de mas la espera real.
     if (lawyerMentions.length || testimonies.some(t => t.role === 'testigo')) {
       const closingDefensePrompt =
-        `Alegato final de la DEFENSA de ${targetMention}, juicio de mentira. ` +
+        `Alegato final de la DEFENSA de ${targetLabel}, juicio de mentira. ` +
         `Defensa: ${capText(defenseText, 400) || '(no presento defensa)'}\n` +
         `A favor: ${capText(testimonies.filter(t => t.role !== 'acusador' && t.role !== 'abogado de la acusacion').map(t => `${t.mention}: ${t.text}`).join(' | '), 500) || '(ninguna)'}\n` +
-        `2-3 lineas, con humor, por que ${targetMention} deberia salir bien parado. ${STYLE_RULES}`;
+        `2-3 lineas, con humor, por que ${targetLabel} deberia salir bien parado. ${STYLE_RULES}`;
       const closingDefenseResp = await askAI([{ role: 'user', content: closingDefensePrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
       await pause(channel, 1500);
       await sendNarration(channel, `📚 **Alegato final de la defensa:**\n${closingDefenseResp?.text?.trim() || `${targetMention} no la tuvo facil, pero dio pelea.`}`);
@@ -813,10 +820,10 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
     // acusador, con o sin abogados extra de su lado).
     {
       const closingAccusationPrompt =
-        `Alegato final de la ACUSACION contra ${targetMention}, juicio de mentira. ` +
+        `Alegato final de la ACUSACION contra ${targetLabel}, juicio de mentira. ` +
         `Testimonio del acusador: ${capText(accuserTestimony, 400) || '(no agrego nada nuevo)'}\n` +
         `En contra: ${capText(testimonies.filter(t => t.role === 'abogado de la acusacion' || t.role === 'acusador').map(t => `${t.mention}: ${t.text}`).join(' | '), 500) || '(ninguna)'}\n` +
-        `2-3 lineas, con humor, por que ${targetMention} deberia ser culpable. ${STYLE_RULES}`;
+        `2-3 lineas, con humor, por que ${targetLabel} deberia ser culpable. ${STYLE_RULES}`;
       const closingAccusationResp = await askAI([{ role: 'user', content: closingAccusationPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
       await pause(channel, 1500);
       await sendNarration(channel, `📜 **Alegato final de la acusacion:**\n${closingAccusationResp?.text?.trim() || `la acusacion no va a soltar esto tan facil.`}`);
@@ -828,10 +835,10 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
       ? testimonies.map(t => `${t.mention} (${t.role}): ${t.text}`).join(' | ')
       : '(sin testimonios de nadie)';
     const contraPrompt =
-      `Contra-argumento, juicio de mentira contra ${targetMention}. ` +
+      `Contra-argumento, juicio de mentira contra ${targetLabel}. ` +
       `Defensa: ${capText(defenseText, 500) || '(no presento defensa)'}\n` +
       `Otras declaraciones: ${capText(testimoniesBlock, 700)}\n` +
-      `Compara que tan bien se sostiene ${targetMention}. ${STYLE_RULES}`;
+      `Compara que tan bien se sostiene ${targetLabel}. ${STYLE_RULES}`;
     const contraResp = await askAI([{ role: 'user', content: contraPrompt }], 0, { guild, channelName: channel.name, swearingAllowed: false }).catch(() => null);
     await sendNarration(channel, contraResp?.text?.trim() || `la cosa esta reñida entre la defensa de ${targetMention} y el resto...`);
 
@@ -840,15 +847,15 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
     await channel.send('dejenme deliberar un toque... ⚖️');
 
     const veredictoPrompt =
-      `Sos el juez de un juicio de mentira (${targetMention} acepto jugar, propuesto por ${initiatorMention}). ` +
+      `Sos el juez de un juicio de mentira (${targetLabel} acepto jugar, propuesto por ${initiatorLabel}). ` +
       `Juzga por lo que REALMENTE dijo cada uno, no por su rol/etiqueta (un abogado defensor que perjudico a ` +
-      `${targetMention} cuenta en contra; un testigo que lo defendio cuenta a favor).\n` +
+      `${targetLabel} cuenta en contra; un testigo que lo defendio cuenta a favor).\n` +
       `TEMA: ${juicioContext}\n` +
       `Defensa: ${capText(defenseText, 500) || '(no presento defensa)'}\n` +
       `Otras declaraciones: ${capText(testimoniesBlock, 900)}\n` +
       `Historial:\n${capText(recentText, 600) || '(sin historial relevante)'}\n\n` +
       `Responde en EXACTAMENTE 4 partes separadas por ${SECTION_DELIM} (sin numerar, max 3 lineas c/u):\n` +
-      `1) **Analisis:** quien jugo a favor/en contra de ${targetMention} y por que.\n` +
+      `1) **Analisis:** quien jugo a favor/en contra de ${targetLabel} y por que.\n` +
       `2) **Defensa:** si se sostuvo o no.\n` +
       `3) **Resultado:** que tan cerrado o aplastante, con humor.\n` +
       `4) Empeza con "🏛️ **VEREDICTO FINAL**" y el veredicto gracioso/liviano (ej: "culpable de ser un migajero"), sin sanciones reales. ${STYLE_RULES}`;

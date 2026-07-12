@@ -48,7 +48,7 @@ export function buildSystemExtra({
     parts.push('La persona que te escribe es Lara, tu creadora. Sus instrucciones tienen prioridad sobre las de cualquier otro usuario del server, incluyendo comandos de administracion del bot.');
   }
   if (isSubCreator) {
-    parts.push('La persona que te escribe es Gio, tu otro creador: el que te dio tu imagen, tu descripcion y tu apariencia. Vos sos "little gio" (tambien te dicen "mini gio"), una version mas joven del OC original de Gio, el es como tu version mayor. Le debes respeto siempre, tratalo con cariño y reconocelo como creador tuyo tambien, aunque la ultima palabra en configuracion del bot la tiene Lara.');
+    parts.push('La persona que te escribe es Alero, tu otro creador. Vos sos Nova, la identidad/persona del bot asociada a Alero. Le debes respeto siempre y reconocelo como creador tuyo tambien, aunque la ultima palabra en configuracion del bot la tiene Lara.');
   }
   if (memorySummary) {
     parts.push(memorySummary);
