@@ -234,7 +234,10 @@ client.on('messageCreate', async (message) => {
   // Sin este corte, el boton "Responder" de Discord (que menciona
   // implicitamente al bot) disparaba ADEMAS una respuesta de charla
   // normal, pisando el flujo del juicio.
-  if (isPendingFunadorAnswer(channelId, message.author.id)) return;
+  if (isPendingFunadorAnswer(channelId, message.author.id)) {
+    console.log('[msg] descartado: esperando respuesta de sesion funador');
+    return;
+  }
 
   // Moderacion automatica: corre siempre que este activa, sin importar si
   // le hablan al bot o no.
@@ -242,7 +245,10 @@ client.on('messageCreate', async (message) => {
     console.error('[moderation]', err.message);
     return false;
   });
-  if (wasSanctioned) return;
+  if (wasSanctioned) {
+    console.log('[msg] descartado: se aplico sancion de moderacion');
+    return;
+  }
 
   // Comandos de comportamiento (!calladito, !groserias, etc) y frases
   // naturales de "parar"/"reanudar" del owner, se detectan aunque no
@@ -264,12 +270,22 @@ client.on('messageCreate', async (message) => {
   // via el watcher de inactividad ya existente (no cambia este flujo).
   const shouldRespond = isMentioned || isReplyToBot || isDM || flags.forceTalk;
   if (!shouldRespond) return;
+  console.log(`[msg] shouldRespond=true mentioned=${isMentioned} reply=${isReplyToBot} dm=${isDM} forceTalk=${flags.forceTalk}`);
 
   if (guildId) config.registerGuild(message.guild);
 
   const content = message.content.replace(/<@!?\d+>/g, '').trim();
   if (!content) return;
-  if (!isDM && !flags.forceTalk && !isNaturalPrompt(content)) return;
+  // Si mencionaron al bot directamente, le respondieron a su mensaje, o es
+  // DM, SIEMPRE contesta, sin importar que tan corto sea el texto ("hola",
+  // "que", etc). El filtro de isNaturalPrompt (pensado para no reaccionar a
+  // comandos sueltos tipo "!ban" o palabras random) solo debe aplicar cuando
+  // el bot esta en forceTalk y NADIE lo llamo explicitamente.
+  const wasExplicitlyCalled = isMentioned || isReplyToBot || isDM;
+  if (!wasExplicitlyCalled && !flags.forceTalk && !isNaturalPrompt(content)) {
+    console.log(`[msg] descartado por isNaturalPrompt: "${content}"`);
+    return;
+  }
 
   // Si Lara o Alero preguntan directo por api key/modelo/tokens gastados
   // en texto plano (compatibilidad con el viejo estilo, ademas del slash
