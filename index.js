@@ -38,6 +38,7 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildModeration,
     GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.GuildMembers,
   ],
   partials: [Partials.Channel, Partials.Message, Partials.Reaction],
 });
@@ -108,7 +109,15 @@ client.on('interactionCreate', handleInteraction);
 async function runAutoModeration(message) {
   const guildId = message.guild?.id;
   if (!guildId || !isModerationActive(guildId)) return false;
-  if (!messageViolatesRespect(message.content)) return false;
+
+  // Un insulto "va dirigido a alguien" si menciona a otro usuario humano,
+  // o si es una respuesta directa (reply) a otro mensaje -- ambas son
+  // señales fuertes de que no es una grosería general al aire.
+  const mentionsSomeoneElse = message.mentions.users.some(u => !u.bot && u.id !== message.author.id);
+  const isReplyToSomeone = !!message.reference;
+  const hasTargetMention = mentionsSomeoneElse || isReplyToSomeone;
+
+  if (!messageViolatesRespect(message.content, hasTargetMention)) return false;
 
   const sanction = registerViolationAndGetSanction(guildId, message.author.id);
   const member = message.member;
