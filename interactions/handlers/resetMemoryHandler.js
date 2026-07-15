@@ -21,7 +21,7 @@ export async function handleResetMemoryCommand(interaction) {
     const config = await getUserMemoryConfig(userId);
     config.mode = mode;
     await setUserMemoryConfig(userId, config);
-    await interaction.editReply({ content: \`Modo de memoria cambiado a **\${mode}**. ✅\` });
+    await interaction.editReply({ content: `Modo de memoria cambiado a **${mode}**. ✅` });
     return true;
   }
 
