@@ -232,14 +232,22 @@ export function clearForcedProvider() {
 }
 
 // ── Reporte de estado en tiempo real (Panel de Control) ───────────────
-export function startHealthReporting(db, providerNames, intervalMs = 60000) {
+export function startHealthReporting(db, providerNames, client, intervalMs = 60000) {
   if (!db) return;
   setInterval(async () => {
     try {
       const snapshots = getAllSnapshots(providerNames);
+      
+      const discordStats = client ? {
+        ping: client.ws.ping,
+        status: client.ws.status === 0 ? 'Conectado' : 'Desconectado',
+        uptime: client.uptime
+      } : null;
+
       await db.collection('bot').doc('ai_health').set({
         updatedAt: new Date().toISOString(),
-        providers: snapshots
+        providers: snapshots,
+        discord: discordStats
       });
     } catch (err) {
       console.error('[providerHealth] Error al reportar salud a Firestore:', err.message);
