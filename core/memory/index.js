@@ -3,6 +3,8 @@ import { summarizeMemoryHistory } from '../summary/index.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { PermissionsBitField, ChannelType } from 'discord.js';
+import { db } from '../../database/firebase.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOCAL_FALLBACK_DIR = path.join(__dirname, '..', '..', 'data', 'stats'); // Solo para fallback de stats/guilds si hace falta
@@ -86,13 +88,76 @@ export async function getGlobalTokenUsage() {
 export async function registerGuildLocal(guild) {
   const docPath = `guilds/${guild.id}`;
   const data = await getCached(docPath, null);
+  
+  const newData = { 
+    name: guild.name,
+    icon: guild.iconURL() || null,
+    memberCount: guild.memberCount || 0,
+    updatedAt: new Date().toISOString()
+  };
+
   if (!data) {
-    const newData = { name: guild.name, addedAt: new Date().toISOString() };
-    setCached(docPath, newData);
-    console.log(`[memory] Servidor registrado: ${guild.name} (${guild.id})`);
-    return { id: guild.id, ...newData };
+    newData.addedAt = new Date().toISOString();
+  } else {
+    newData.addedAt = data.addedAt || new Date().toISOString();
   }
-  return { id: guild.id, ...data };
+  
+  setCached(docPath, newData);
+  console.log(`[memory] Servidor registrado/actualizado: ${guild.name} (${guild.id})`);
+  
+  // Sincronizar canales en background
+  syncGuildChannels(guild).catch(err => console.error('[memory] Error sincronizando canales:', err));
+  
+  return { id: guild.id, ...newData };
+}
+
+export async function syncGuildChannels(guild) {
+  if (!db) return;
+  const botMember = guild.members.me;
+  if (!botMember) return;
+
+  const validChannels = guild.channels.cache.filter(c => {
+    if (c.type !== ChannelType.GuildText && c.type !== ChannelType.GuildAnnouncement) return false;
+    const perms = botMember.permissionsIn(c);
+    return perms.has(PermissionsBitField.Flags.ViewChannel) && perms.has(PermissionsBitField.Flags.SendMessages);
+  });
+
+  const batch = db.batch();
+  let count = 0;
+  
+  for (const [channelId, channel] of validChannels) {
+    const docRef = db.collection('guilds').doc(guild.id).collection('channels').doc(channelId);
+    batch.set(docRef, {
+      id: channel.id,
+      name: channel.name,
+      type: channel.type,
+      position: channel.rawPosition,
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+    count++;
+    
+    if (count >= 400) {
+      await batch.commit().catch(e => console.error('[memory] Error en batch commit de canales:', e.message));
+      count = 0;
+      batch = db.batch();
+    }
+  }
+
+  try {
+    const existingDocs = await db.collection('guilds').doc(guild.id).collection('channels').get();
+    existingDocs.forEach(doc => {
+      if (!validChannels.has(doc.id)) {
+        batch.delete(doc.ref);
+        count++;
+      }
+    });
+  } catch (err) {
+    console.warn('[memory] No se pudieron limpiar canales antiguos:', err.message);
+  }
+
+  if (count > 0) {
+    await batch.commit().catch(e => console.error('[memory] Error finalizando batch de canales:', e.message));
+  }
 }
 
 export default {
@@ -103,4 +168,5 @@ export default {
   getGlobalTokenUsage,
   addGuildTokenUsage,
   registerGuildLocal,
+  syncGuildChannels,
 };

@@ -3,11 +3,15 @@
 // para el panel web (bot/status), igual que la version original.
 import admin from 'firebase-admin';
 import { db } from './database/firebase.js';
-import { registerGuildLocal, addGuildTokenUsage, getGuildTokenUsage } from './core/memory/index.js';
+import { registerGuildLocal, addGuildTokenUsage, getGuildTokenUsage, syncGuildChannels } from './core/memory/index.js';
 import secrets from './secrets.js';
 
 export async function registerGuild(guild) {
   return registerGuildLocal(guild);
+}
+
+export async function syncChannels(guild) {
+  return syncGuildChannels(guild);
 }
 
 export async function addTokenUsage(guildId, tokens) {
@@ -50,6 +54,7 @@ export async function updateBotStatus(client, activeModelInfo = {}) {
 
 export default {
   registerGuild,
+  syncChannels,
   addTokenUsage,
   updateBotStatus,
   getTokenUsage,

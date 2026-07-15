@@ -167,6 +167,10 @@ client.once('ready', async () => {
 });
 
 client.on('guildCreate', g => config.registerGuild(g));
+client.on('guildUpdate', (oldG, newG) => config.registerGuild(newG));
+client.on('channelCreate', c => { if (c.guild) config.syncChannels(c.guild); });
+client.on('channelUpdate', (oldC, newC) => { if (newC.guild) config.syncChannels(newC.guild); });
+client.on('channelDelete', c => { if (c.guild) config.syncChannels(c.guild); });
 
 // ── Slash command unico: /bot <grupo> <subcomando> ──
 client.on('interactionCreate', handleInteraction);
