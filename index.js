@@ -74,7 +74,17 @@ http.createServer((req, res) => {
 
 client.once('ready', async () => {
   console.log(`[discord] Conectado como ${client.user.tag}`);
-  client.guilds.cache.forEach(g => config.registerGuild(g));
+  
+  // Limpiar comandos de servidor (guild commands) para eliminar comandos antiguos/duplicados.
+  // Solo dependemos de los comandos globales (/bot).
+  client.guilds.cache.forEach(async (g) => {
+    config.registerGuild(g);
+    try {
+      await g.commands.set([]);
+    } catch (err) {
+      console.warn(`[discord] No se pudieron limpiar comandos locales en ${g.name}:`, err.message);
+    }
+  });
   startConfigRefresh(5);
   config.updateBotStatus(client, lastAIResponse);
   setInterval(() => config.updateBotStatus(client, lastAIResponse), 30000);

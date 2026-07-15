@@ -9,7 +9,7 @@ export async function handleResetMemoryCommand(interaction) {
 
   await interaction.deferReply({ ephemeral: true });
 
-  if (sub === 'channel' || sub === 'server') {
+  if (sub === 'channel' || sub === 'server' || sub === 'all') {
     const config = await getUserMemoryConfig(userId);
     await resetUserMemory(userId, guildId, config.mode);
     await interaction.editReply({ content: 'listo, he olvidado todo tu historial en este modo ✅' });
