@@ -247,7 +247,9 @@ export function startHealthReporting(db, providerNames, client, intervalMs = 600
       await db.collection('bot').doc('ai_health').set({
         updatedAt: new Date().toISOString(),
         providers: snapshots,
-        discord: discordStats
+        discord: discordStats,
+        activeProvider: activeProvider || null,
+        forcedProvider: forcedProviderName || null
       });
     } catch (err) {
       console.error('[providerHealth] Error al reportar salud a Firestore:', err.message);
