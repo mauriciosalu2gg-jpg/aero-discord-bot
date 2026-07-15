@@ -231,6 +231,22 @@ export function clearForcedProvider() {
   forcedProviderName = null;
 }
 
+// ── Reporte de estado en tiempo real (Panel de Control) ───────────────
+export function startHealthReporting(db, providerNames, intervalMs = 60000) {
+  if (!db) return;
+  setInterval(async () => {
+    try {
+      const snapshots = getAllSnapshots(providerNames);
+      await db.collection('bot').doc('ai_health').set({
+        updatedAt: new Date().toISOString(),
+        providers: snapshots
+      });
+    } catch (err) {
+      console.error('[providerHealth] Error al reportar salud a Firestore:', err.message);
+    }
+  }, intervalMs);
+}
+
 export default {
   HEALTH_STATUS,
   isOnCooldown,
@@ -248,4 +264,5 @@ export default {
   getForcedProvider,
   setForcedProvider,
   clearForcedProvider,
+  startHealthReporting,
 };

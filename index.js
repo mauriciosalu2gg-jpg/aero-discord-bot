@@ -128,6 +128,9 @@ client.once('ready', async () => {
 
   // Escuchar comandos desde el Panel de Control (Firestore)
   if (db) {
+    // Iniciar reporte de estado de IA en tiempo real para el panel web
+    const providerNames = secrets.getAvailableProviders().map(p => p.name);
+    startHealthReporting(db, providerNames, 60000);
     db.collection('bot_actions')
       .where('status', '==', 'pending')
       .onSnapshot((snapshot) => {
