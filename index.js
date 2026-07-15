@@ -22,7 +22,7 @@ import { looksSuspicious, analyzeWithAI, getUserPoints, addPoints, getPointsForR
 import { handleInteraction } from './interactions/interactionCreate.js';
 import { isPendingFunadorAnswer } from './core/funadorSession.js';
 import { handleApiKeyQuestion } from './commands/apikey.js';
-import { getActiveProvider } from './services/ai/providerHealth.js';
+import { getActiveProvider, startHealthReporting } from './services/ai/providerHealth.js';
 import { db } from './database/firebase.js';
 import { isBasicModel } from './config/providers.js';
 
