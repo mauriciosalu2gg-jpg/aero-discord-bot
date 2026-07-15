@@ -6,7 +6,8 @@ import secrets from './secrets.js';
 import { askAI, startConfigRefresh } from './services/aiManager.js';
 import { validateAllProviders } from './services/ai/modelValidator.js';
 
-import { getMemory, saveMemory } from './core/memory.js';
+import { getUserMemory, saveUserMemory } from './core/memory/index.js';
+import { getUserMemoryConfig, formatProfileForPrompt } from './core/memory/config.js';
 import { isOwner, isSubCreator } from './core/permissions.js';
 import { analyzeContext } from './core/contextAnalyzer.js';
 import { detectMood } from './core/moodEngine.js';
@@ -17,7 +18,7 @@ import { webSearch, needsWebSearch } from './core/webSearch.js';
 import { computeThinkingDelay, humanizedTyping } from './core/typingDelay.js';
 import { getFlags, matchesStopPhrase, matchesResumePhrase, setFlag, hydrateFlags } from './core/behaviorFlags.js';
 import { markActivity, startIdleWatcher } from './core/idleFacts.js';
-import { isModerationActive, messageViolatesRespect, registerViolationAndGetSanction, hydrateModerationFlags, hydrateStrikes } from './core/moderationEngine.js';
+import { looksSuspicious, analyzeWithAI, getUserPoints, addPoints, getPointsForRule, determineAction, logModeration, isModerationActive, hydrateModerationFlags } from './core/moderation/index.js';
 import { handleInteraction } from './interactions/interactionCreate.js';
 import { isPendingFunadorAnswer } from './core/funadorSession.js';
 import { handleApiKeyQuestion } from './commands/apikey.js';
@@ -91,7 +92,6 @@ client.once('ready', async () => {
   // cada reinicio/redeploy de Render.
   await hydrateFlags().catch(err => console.error('[hydrate/flags]', err.message));
   await hydrateModerationFlags().catch(err => console.error('[hydrate/moderation]', err.message));
-  await hydrateStrikes().catch(err => console.error('[hydrate/strikes]', err.message));
 
   // Watcher de inactividad: si un canal lleva 6+ horas sin actividad y no
   // esta "calladito", el bot tira un dato curioso por su cuenta.
@@ -126,86 +126,94 @@ client.on('interactionCreate', handleInteraction);
 async function runAutoModeration(message) {
   const guildId = message.guild?.id;
   if (!guildId || !isModerationActive(guildId)) return false;
+
+  if (!looksSuspicious(message.content)) return false;
+
+  // Obtener memoria local para pasar contexto
+  let recentMessages = [];
+  try {
+    const memory = await getUserMemory(message.author.id, guildId, 'local'); // solo necesitamos leer lo reciente
+    if (memory && memory.messages) {
+      recentMessages = memory.messages.slice(-3); // Ultimos 3
+    }
+  } catch (err) {
+    console.error('[moderation] Error obteniendo contexto:', err.message);
+  }
+
+  // Si parece sospechoso, usamos IA con el contexto
+  const aiResult = await analyzeWithAI(message.content, recentMessages);
+  if (aiResult.rule_violated === 'NINGUNA') return false;
+
   const botMember = message.guild.members.me;
   const botHasAdmin = !!botMember?.permissions?.has?.('Administrator');
+  
+  let action = 'WARN';
+  let totalPoints = 0;
+  
+  // Si la IA tiene baja confianza, solo advertimos y no sumamos puntos,
+  // o sumamos 0 puntos pero queda registrado.
+  if (aiResult.confidence < 85) {
+    console.log(`[moderation] Baja confianza (${aiResult.confidence}%). Aplicando solo WARN.`);
+    action = 'WARN';
+    totalPoints = await getUserPoints(guildId, message.author.id); // sin sumar
+  } else {
+    const pointsToAdd = getPointsForRule(aiResult.rule_violated);
+    totalPoints = await addPoints(guildId, message.author.id, pointsToAdd);
+    action = determineAction(totalPoints);
+  }
 
-  // Un insulto "va dirigido a alguien" si menciona a otro usuario humano,
-  // o si es una respuesta directa (reply) a otro mensaje -- ambas son
-  // señales fuertes de que no es una grosería general al aire.
-  const mentionsSomeoneElse = message.mentions.users.some(u => !u.bot && u.id !== message.author.id);
-  const isReplyToSomeone = !!message.reference;
-  const hasTargetMention = mentionsSomeoneElse || isReplyToSomeone;
-
-  if (!messageViolatesRespect(message.content, hasTargetMention)) return false;
-
-  const sanction = registerViolationAndGetSanction(guildId, message.author.id);
   const member = message.member;
 
+  await logModeration(guildId, message.author.id, action, aiResult.severity_reason, aiResult.confidence);
+
+  if (message.deletable && action !== 'WARN') {
+    await message.delete().catch(() => {});
+  }
+
   try {
-    if (message.deletable) {
-      await message.delete().catch(() => {});
-    }
-    switch (sanction.kind) {
-      case 'warn':
+    switch(action) {
+      case 'WARN':
         await message.channel.send({
-          content: `⚠️ <@${message.author.id}> baja un cambio. Eso cuenta como falta ${sanction.strikeNumber}.`,
-          allowedMentions: { users: [message.author.id] },
+          content: `⚠️ <@${message.author.id}> advertencia: ${aiResult.severity_reason} (Puntos: ${totalPoints})`,
+          allowedMentions: { users: [message.author.id] }
         });
         break;
-      case 'timeout':
-        let timeoutApplied = false;
-        try {
-          if (member && (botHasAdmin || member.moderatable)) {
-            await member.timeout(sanction.durationMs, 'Moderacion automatica: falta de respeto repetida');
-            timeoutApplied = true;
-          }
-        } catch (err) {
-          console.error('[moderation] timeout fallido:', err.message);
+      case 'MUTE':
+        if (member && (botHasAdmin || member.moderatable)) {
+          await member.timeout(10 * 60 * 1000, `AutoMod: ${aiResult.rule_violated}`);
+          await message.channel.send({
+            content: `🔇 <@${message.author.id}> muteado por 10m. Motivo: ${aiResult.severity_reason}`,
+            allowedMentions: { users: [message.author.id] }
+          });
+        } else {
+          await message.channel.send(`⚠️ No puedo mutear a <@${message.author.id}> (faltan permisos).`);
         }
-        await message.channel.send({
-          content: timeoutApplied
-            ? `🔇 <@${message.author.id}> timeout de ${sanction.label}. Vuelve a hablar cuando termine.\n⏳ Tiempo estimado: <t:${Math.floor((Date.now() + sanction.durationMs) / 1000)}:R>`
-            : `⚠️ no pude aplicar el timeout a <@${message.author.id}> porque me faltan permisos o el usuario tiene un rol superior.`,
-          allowedMentions: { users: [message.author.id] },
-        });
         break;
-      case 'kick':
-        let kickApplied = false;
-        try {
-          if (member && (botHasAdmin || member.kickable)) {
-            await member.kick('Moderacion automatica: falta de respeto repetida');
-            kickApplied = true;
-          }
-        } catch (err) {
-          console.error('[moderation] kick fallido:', err.message);
+      case 'KICK':
+        if (member && (botHasAdmin || member.kickable)) {
+          await member.kick(`AutoMod: ${aiResult.rule_violated}`);
+          await message.channel.send({
+            content: `👢 <@${message.author.id}> fue expulsado. Motivo: ${aiResult.severity_reason}`,
+            allowedMentions: { users: [message.author.id] }
+          });
+        } else {
+          await message.channel.send(`⚠️ No puedo expulsar a <@${message.author.id}> (faltan permisos).`);
         }
-        await message.channel.send({
-          content: kickApplied
-            ? `👢 <@${message.author.id}> fue expulsado por reincidir.`
-            : `⚠️ no pude expulsar a <@${message.author.id}> porque me faltan permisos o el usuario tiene un rol superior.`,
-          allowedMentions: { users: [message.author.id] },
-        });
         break;
-      case 'ban':
-        let banApplied = false;
-        try {
-          if (member && (botHasAdmin || member.bannable)) {
-            await member.ban({ reason: 'Moderacion automatica: falta de respeto repetida (limite alcanzado)' });
-            banApplied = true;
-          }
-        } catch (err) {
-          console.error('[moderation] ban fallido:', err.message);
+      case 'BAN':
+        if (member && (botHasAdmin || member.bannable)) {
+          await member.ban({ reason: `AutoMod: ${aiResult.rule_violated}` });
+          await message.channel.send({
+            content: `🔨 <@${message.author.id}> fue baneado. Motivo: ${aiResult.severity_reason}`,
+            allowedMentions: { users: [message.author.id] }
+          });
+        } else {
+          await message.channel.send(`⚠️ No puedo banear a <@${message.author.id}> (faltan permisos).`);
         }
-        await message.channel.send({
-          content: banApplied
-            ? `🔨 <@${message.author.id}> fue baneado por reincidir despues de varios avisos.`
-            : `⚠️ no pude banear a <@${message.author.id}> porque me faltan permisos o el usuario tiene un rol superior.`,
-          allowedMentions: { users: [message.author.id] },
-        });
         break;
     }
   } catch (err) {
-    console.error('[moderation] Error aplicando sancion:', err.message);
+    console.error('[moderation] Error sancionando:', err.message);
   }
 
   return true;
@@ -299,8 +307,16 @@ client.on('messageCreate', async (message) => {
   if (wasApiKeyQuestion) return;
 
   try {
-    // 1. Memoria persistente del canal (separada por servidor, en Firestore)
-    const memory = await getMemory(channelId, guildId);
+    // 1. Memoria persistente del usuario (Global o Local)
+    const userConfig = await getUserMemoryConfig(message.author.id);
+    const memory = await getUserMemory(message.author.id, guildId, userConfig.mode);
+    
+    // Anexar facts al summary para mantener compatibilidad rapida con contextAnalyzer
+    let summaryForAI = memory.summary || '';
+    if (memory.facts && memory.facts.length > 0) {
+      summaryForAI += `\nHechos conocidos sobre el usuario:\n- ${memory.facts.join('\n- ')}`;
+    }
+
     memory.messages = memory.messages || [];
     memory.messages.push({
       role: 'user',
@@ -348,7 +364,8 @@ client.on('messageCreate', async (message) => {
       moodInfo,
       isOwner: context.isOwnerMessage,
       isSubCreator: isSubCreator(message.author),
-      memorySummary: summary,
+      memorySummary: summaryForAI,
+      userProfile: formatProfileForPrompt(userConfig.profile),
       webContext,
       guild: message.guild,
       channelName: message.channel?.name,
@@ -361,8 +378,7 @@ client.on('messageCreate', async (message) => {
 
     // 6. Guardar respuesta en memoria persistente
     memory.messages.push({ role: 'assistant', content: response.text, authorName: client.user.username });
-    while (memory.messages.length > 40) memory.messages.shift();
-    await saveMemory(channelId, memory, guildId);
+    await saveUserMemory(message.author.id, guildId, userConfig.mode, memory);
 
     if (guildId) config.addTokenUsage(guildId, response.tokens || estimateTokens(response.text));
 

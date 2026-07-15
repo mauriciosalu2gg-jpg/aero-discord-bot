@@ -1,5 +1,5 @@
 // interactions/handlers/moderationHandler.js
-import { clearStrikes, getStrikeInfo, isModerationActive, setModerationActive } from '../../core/moderationEngine.js';
+import { isModerationActive, setModerationActive, getUserPoints, clearPoints } from '../../core/moderation/index.js';
 
 export async function handleModerationCommand(interaction) {
   const sub = interaction.options.getSubcommand();
@@ -9,7 +9,7 @@ export async function handleModerationCommand(interaction) {
     const active = isModerationActive(guildId);
     await interaction.reply({
       content: active
-        ? '🛡️ moderacion automatica activa. Estoy vigilando insultos, hostigamiento y reincidencias.'
+        ? '🛡️ moderacion automatica inteligente activa. Estoy usando IA para vigilar infracciones severas.'
         : '🛡️ moderacion automatica apagada.',
       ephemeral: false,
     });
@@ -18,10 +18,10 @@ export async function handleModerationCommand(interaction) {
 
   if (sub === 'reset') {
     const user = interaction.options.getUser('usuario', true);
-    const strikeInfo = getStrikeInfo(guildId, user.id);
-    await clearStrikes(guildId, user.id);
+    const points = await getUserPoints(guildId, user.id);
+    await clearPoints(guildId, user.id);
     await interaction.reply({
-      content: `🧹 strikes reiniciados para <@${user.id}> (tenia ${strikeInfo.strikes || 0}).`,
+      content: `🧹 puntos reiniciados para <@${user.id}> (tenia ${points || 0} puntos).`,
       allowedMentions: { users: [user.id] },
       ephemeral: false,
     });
@@ -32,7 +32,7 @@ export async function handleModerationCommand(interaction) {
   await setModerationActive(guildId, value);
 
   const msg = value
-    ? '🛡️ modo moderacion activado. Ahora vigilo el chat: aviso, timeout corto, timeout largo, kick y ban si alguien sigue faltando el respeto.'
+    ? '🛡️ modo moderacion activado. El sistema Hibrido + IA (puntuacion) esta activo.'
     : '🛡️ modo moderacion desactivado, dejo de sancionar automatico.';
 
   await interaction.reply({ content: msg, ephemeral: false });

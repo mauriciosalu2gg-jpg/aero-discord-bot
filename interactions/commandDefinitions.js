@@ -86,7 +86,27 @@ export const commandDefinitions = [
       .setDescription('Gestion de memoria persistente')
       .addSubcommand(sc => sc.setName('channel').setDescription('Resetea solo este canal'))
       .addSubcommand(sc => sc.setName('server').setDescription('Resetea todo este servidor'))
-      .addSubcommand(sc => sc.setName('all').setDescription('Resetea TODOS los servidores (solo Lara)')))
+      .addSubcommand(sc => sc.setName('all').setDescription('Resetea TODOS los servidores (solo Lara)'))
+      .addSubcommand(sc => sc
+        .setName('mode')
+        .setDescription('Cambia como el bot guarda tu historial')
+        .addStringOption(opt => opt
+          .setName('modo')
+          .setDescription('off, local o global')
+          .setRequired(true)
+          .addChoices(
+            { name: 'Desactivado (Off)', value: 'off' },
+            { name: 'Por Servidor (Local)', value: 'local' },
+            { name: 'Compartido (Global)', value: 'global' }
+          )))
+      .addSubcommand(sc => sc
+        .setName('profile')
+        .setDescription('Guarda datos sobre ti para inyectar en todos los servidores (Global)')
+        .addStringOption(opt => opt.setName('nombre').setDescription('Como quieres que te llame').setRequired(false))
+        .addStringOption(opt => opt.setName('pronombres').setDescription('El/Ella/Elle').setRequired(false))
+        .addStringOption(opt => opt.setName('preferencias').setDescription('Gustos, edad, info extra').setRequired(false))
+        .addStringOption(opt => opt.setName('instrucciones').setDescription('Como debe responderte').setRequired(false))
+      ))
     .toJSON(),
 ];
 

@@ -19,6 +19,7 @@ export function buildSystemExtra({
   swearingAllowed = true,
   respectfulOnly = false,
   securityMode = false,
+  userProfile = '',
 } = {}) {
   const parts = [];
 
@@ -63,6 +64,9 @@ export function buildSystemExtra({
   }
   if (isSubCreator) {
     parts.push('Vos sos Nova, la identidad/persona del bot asociada a Alero, aunque la ultima palabra en configuracion del bot la tiene Lara.');
+  }
+  if (userProfile) {
+    parts.push(userProfile);
   }
   if (memorySummary) {
     parts.push(memorySummary);

@@ -30,7 +30,7 @@ export async function askAI(history, recentTokens = 0, extra = {}) {
   const systemExtra = buildSystemExtra(extra);
   const panelConfig = await getPanelConfig();
 
-  const providerChain = buildProviderChain(panelConfig, recentTokens);
+  const providerChain = buildProviderChain(panelConfig, recentTokens, extra.intent || 'chat');
 
   try {
     return await dispatchWithFallback({ providers: providerChain, history, systemExtra });
@@ -71,12 +71,16 @@ export async function askAI(history, recentTokens = 0, extra = {}) {
  * @param {number} recentTokens
  * @returns {Array<{name:string, apiKey:string, models:string[]}>}
  */
-function buildProviderChain(panelConfig, recentTokens) {
+function buildProviderChain(panelConfig, recentTokens, intent = 'chat') {
   const envProviders = secrets.getAvailableProviders();
   const chain = [];
   const seen = new Set();
+  
+  const isFastIntent = intent === 'moderation' || intent === 'summary';
 
-  if (panelConfig?.proveedorPrimario && panelConfig?.apiKey) {
+  // Si es chat, respetamos la preferencia del panel.
+  // Si es moderacion/resumen, ignoramos la preferencia de chat y vamos directo a los livianos.
+  if (!isFastIntent && panelConfig?.proveedorPrimario && panelConfig?.apiKey) {
     const name = panelConfig.proveedorPrimario;
     const preferredModel = panelConfig.modeloActivo;
     const ladder = preferredModel
@@ -88,9 +92,8 @@ function buildProviderChain(panelConfig, recentTokens) {
 
   for (const provider of envProviders) {
     if (seen.has(provider.name)) continue;
-    // En cargas pesadas de historial, priorizamos el modelo más liviano
-    // de la escalera para responder más rápido y barato.
-    const models = recentTokens > TOKENS_THRESHOLD
+    // Si es intent rapido (moderacion/resumen) o hay muchos tokens, usamos los modelos livianos primero.
+    const models = (isFastIntent || recentTokens > TOKENS_THRESHOLD)
       ? [...provider.models].reverse()
       : provider.models;
     chain.push({ name: provider.name, apiKey: provider.apiKey, models });

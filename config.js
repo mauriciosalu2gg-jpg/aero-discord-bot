@@ -3,7 +3,7 @@
 // para el panel web (bot/status), igual que la version original.
 import admin from 'firebase-admin';
 import { db } from './database/firebase.js';
-import { registerGuildLocal, addGuildTokenUsage, getGuildTokenUsage } from './core/memory.js';
+import { registerGuildLocal, addGuildTokenUsage, getGuildTokenUsage } from './core/memory/index.js';
 import secrets from './secrets.js';
 
 export async function registerGuild(guild) {
