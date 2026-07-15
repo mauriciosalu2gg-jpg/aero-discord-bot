@@ -69,6 +69,18 @@ export async function addGuildTokenUsage(guildId, tokens) {
   data.total = (data.total || 0) + tokens;
   data.updatedAt = new Date().toISOString();
   setCached(docPath, data);
+
+  // Guardar tambien a nivel global
+  const globalPath = 'global/stats/tokens';
+  const globalData = await getCached(globalPath, { total: 0 });
+  globalData.total = (globalData.total || 0) + tokens;
+  globalData.updatedAt = new Date().toISOString();
+  setCached(globalPath, globalData);
+}
+
+export async function getGlobalTokenUsage() {
+  const data = await getCached('global/stats/tokens', { total: 0 });
+  return data.total || 0;
 }
 
 export async function registerGuildLocal(guild) {
@@ -88,6 +100,7 @@ export default {
   saveUserMemory,
   resetUserMemory,
   getGuildTokenUsage,
+  getGlobalTokenUsage,
   addGuildTokenUsage,
   registerGuildLocal,
 };

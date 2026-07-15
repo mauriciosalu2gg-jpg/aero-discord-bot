@@ -6,7 +6,7 @@
 import { EmbedBuilder } from 'discord.js';
 import secrets from '../../secrets.js';
 import { getActiveProvider, getAllSnapshots } from '../../services/ai/providerHealth.js';
-import { getGuildTokenUsage, getGlobalTokenUsage } from '../../core/memory.js';
+import { getGuildTokenUsage, getGlobalTokenUsage } from '../../core/memory/index.js';
 
 const PROVIDER_DISPLAY_NAMES = {
   gemini: 'Google Gemini',
