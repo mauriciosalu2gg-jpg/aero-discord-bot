@@ -27,7 +27,7 @@
 // para el juicio y no dispara ademas una respuesta de charla normal.
 import { askAI } from '../services/aiManager.js';
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } from 'discord.js';
-import { getMemory } from './memory.js';
+import { getMemory } from './memory/index.js';
 import { humanizedTyping } from './typingDelay.js';
 
 const CONSENT_TIMEOUT_MS = 2 * 60 * 1000;   // 2 min para que el acusado consienta
