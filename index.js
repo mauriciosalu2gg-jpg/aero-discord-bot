@@ -34,6 +34,29 @@ let lastAIResponse = { provider: 'ninguno', model: 'ninguno' };
 // watcher de inactividad, sin necesidad de guardar esto en DB.
 const trackedChannels = new Map(); // channelId -> { guildId }
 
+// Rate limiter para evitar spam a la IA y evitar el límite de peticiones (429)
+const userRateLimits = new Map();
+const MAX_REQUESTS = 5; // Peticiones máximas permitidas
+const RATE_LIMIT_WINDOW = 60000; // En un lapso de 1 minuto (60000 ms)
+
+function handleRateLimit(userId) {
+  const now = Date.now();
+  if (!userRateLimits.has(userId)) userRateLimits.set(userId, { times: [], warned: false });
+  const data = userRateLimits.get(userId);
+  data.times = data.times.filter(t => now - t < RATE_LIMIT_WINDOW);
+  
+  if (data.times.length >= MAX_REQUESTS) {
+    if (!data.warned) {
+      data.warned = true;
+      return 'WARN';
+    }
+    return 'BLOCKED';
+  }
+  data.times.push(now);
+  data.warned = false;
+  return 'ALLOW';
+}
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -364,11 +387,31 @@ client.on('messageCreate', async (message) => {
   });
   if (wasApiKeyQuestion) return;
 
+  // --- COMPROBACIÓN DE RATE LIMIT ---
+  const rlStatus = handleRateLimit(message.author.id);
+  if (rlStatus === 'WARN') {
+    await message.reply("⏳ ¡Vas muy rápido! Estoy recibiendo demasiadas solicitudes. Espera un minuto para que mi sistema se restaure.");
+    return;
+  } else if (rlStatus === 'BLOCKED') {
+    return; // Ya fue advertido, ignorar en silencio
+  }
+  // ----------------------------------
+
   try {
     // 1. Memoria persistente del usuario (Global o Local)
     const userConfig = await getUserMemoryConfig(message.author.id);
     const memory = await getUserMemory(message.author.id, guildId, userConfig.mode);
     
+    // Procesar archivos adjuntos si los hay
+    let finalContent = content;
+    if (message.attachments.size > 0) {
+      const { processAttachments } = await import('./services/documentReader.js');
+      const attachmentText = await processAttachments(message.attachments);
+      if (attachmentText) {
+        finalContent += `\n${attachmentText}`;
+      }
+    }
+
     // Anexar facts al summary para mantener compatibilidad rapida con contextAnalyzer
     let summaryForAI = memory.summary || '';
     if (memory.facts && memory.facts.length > 0) {
@@ -378,7 +421,7 @@ client.on('messageCreate', async (message) => {
     memory.messages = memory.messages || [];
     memory.messages.push({
       role: 'user',
-      content,
+      content: finalContent,
       authorName: message.author.username,
       displayName: message.member?.displayName || message.author.globalName || message.author.username,
     });
