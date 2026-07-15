@@ -80,14 +80,18 @@ function buildProviderChain(panelConfig, recentTokens, intent = 'chat') {
 
   // Si es chat, respetamos la preferencia del panel.
   // Si es moderacion/resumen, ignoramos la preferencia de chat y vamos directo a los livianos.
-  if (!isFastIntent && panelConfig?.proveedorPrimario && panelConfig?.apiKey) {
+  if (!isFastIntent && panelConfig?.proveedorPrimario) {
     const name = panelConfig.proveedorPrimario;
     const preferredModel = panelConfig.modeloActivo;
-    const ladder = preferredModel
-      ? [preferredModel, ...getModelLadder(name).filter(m => m !== preferredModel)]
-      : getModelLadder(name);
-    chain.push({ name, apiKey: panelConfig.apiKey, models: ladder });
-    seen.add(name);
+    const apiKey = panelConfig.apiKey || envProviders.find(p => p.name === name)?.apiKey;
+    
+    if (apiKey) {
+      const ladder = preferredModel
+        ? [preferredModel, ...getModelLadder(name).filter(m => m !== preferredModel)]
+        : getModelLadder(name);
+      chain.push({ name, apiKey, models: ladder });
+      seen.add(name);
+    }
   }
 
   for (const provider of envProviders) {
