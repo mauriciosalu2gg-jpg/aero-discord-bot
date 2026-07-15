@@ -21,8 +21,8 @@ import { markActivity, startIdleWatcher } from './core/idleFacts.js';
 import { looksSuspicious, analyzeWithAI, getUserPoints, addPoints, getPointsForRule, determineAction, logModeration, isModerationActive, hydrateModerationFlags } from './core/moderation/index.js';
 import { handleInteraction } from './interactions/interactionCreate.js';
 import { isPendingFunadorAnswer } from './core/funadorSession.js';
-import { handleApiKeyQuestion } from './commands/apikey.js';
 import { getActiveProvider } from './services/ai/providerHealth.js';
+import { db } from './database/firebase.js';
 import { isBasicModel } from './config/providers.js';
 
 const PORT = process.env.PORT || 3000;
@@ -124,6 +124,46 @@ client.once('ready', async () => {
       }
     }
   );
+
+  // Escuchar comandos desde el Panel de Control (Firestore)
+  if (db) {
+    db.collection('bot_actions')
+      .where('status', '==', 'pending')
+      .onSnapshot((snapshot) => {
+        snapshot.docChanges().forEach(async (change) => {
+          if (change.type === 'added') {
+            const data = change.doc.data();
+            if (data.action === 'send_message' && data.guildId && data.channelId && data.content) {
+              console.log(`[panel] Recibido mensaje para enviar a ${data.guildId}/${data.channelId}`);
+              try {
+                const guild = client.guilds.cache.get(data.guildId);
+                if (!guild) throw new Error('Servidor no encontrado');
+                // Quitar cualquier prefijo # si lo enviaron desde el panel
+                let channelId = data.channelId.replace(/^#/, '');
+                // Si el channelId no es numérico, intentamos buscarlo por nombre
+                let channel = guild.channels.cache.get(channelId);
+                if (!channel) {
+                  channel = guild.channels.cache.find(c => c.name === channelId || c.name === channelId.toLowerCase());
+                }
+                
+                if (channel && channel.isTextBased()) {
+                  await channel.send(data.content);
+                  await change.doc.ref.update({ status: 'sent', sentAt: new Date().toISOString() });
+                  console.log(`[panel] Mensaje enviado con éxito al canal ${channel.name || channelId}`);
+                } else {
+                  throw new Error('Canal de texto no encontrado');
+                }
+              } catch (err) {
+                console.error('[panel] Error al enviar mensaje:', err.message);
+                await change.doc.ref.update({ status: 'error', error: err.message, failedAt: new Date().toISOString() });
+              }
+            }
+          }
+        });
+      }, (err) => {
+        console.error('[panel] Error en el listener de bot_actions:', err.message);
+      });
+  }
 });
 
 client.on('guildCreate', g => config.registerGuild(g));
