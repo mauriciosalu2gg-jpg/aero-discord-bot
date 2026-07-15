@@ -27,7 +27,7 @@
 // para el juicio y no dispara ademas una respuesta de charla normal.
 import { askAI } from '../services/aiManager.js';
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } from 'discord.js';
-import { getMemory } from './memory/index.js';
+
 import { humanizedTyping } from './typingDelay.js';
 
 const CONSENT_TIMEOUT_MS = 2 * 60 * 1000;   // 2 min para que el acusado consienta
@@ -690,10 +690,10 @@ export async function startFunadorSession(interaction, targetUser, razon = null)
       waitOrSkipByVote(channel, WITNESS_WINDOW_MS, witnessVoters, 'ventana de testigos abierta', witnessWindowState),
     ]);
 
-    const memory = await getMemory(channelId, guild?.id).catch(() => ({ messages: [] }));
-    const recentText = (memory.messages || [])
+    const rawHistoryForWitnesses = await fetchRecentChannelHistory(channel, HISTORY_LOOKBACK_MS);
+    const recentText = rawHistoryForWitnesses
       .slice(-25)
-      .map(m => `${m.authorName || m.displayName || m.role || 'alguien'}: ${m.content}`)
+      .map(m => `${m.author}: ${m.content}`)
       .join('\n');
 
     // Clasifica a cada testigo como a-favor/en-contra y recorta cada bando
