@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reglas del Servidor · Novarito</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0e1117;
+      --surface: #161b24;
+      --surface2: #1d2433;
+      --border: rgba(255,255,255,0.07);
+      --accent: #7c6ff7;
+      --accent2: #5865f2;
+      --warn: #f0b232;
+      --mute: #5aa8f0;
+      --kick: #ff7b54;
+      --ban: #e74c3c;
+      --green: #2ecc71;
+      --text: #e6eaf2;
+      --subtext: #8892a4;
+      --radius: 14px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 80px 24px 60px;
+      text-align: center;
+      background: radial-gradient(ellipse 120% 80% at 50% -20%, rgba(124,111,247,0.22) 0%, transparent 70%);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%237c6ff7' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat;
+      pointer-events: none;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(88,101,242,0.18);
+      border: 1px solid rgba(88,101,242,0.35);
+      color: #a5b4fc;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 6px 14px;
+      border-radius: 100px;
+      margin-bottom: 20px;
+    }
+
+    .badge span { width: 6px; height: 6px; background: #5865f2; border-radius: 50%; animation: pulse 2s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    h1 {
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #fff 30%, #a5b4fc 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 14px;
+    }
+
+    .hero-sub {
+      color: var(--subtext);
+      font-size: 1rem;
+      max-width: 560px;
+      margin: 0 auto 32px;
+    }
+
+    .last-updated {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+      color: var(--subtext);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 6px 14px;
+      border-radius: 100px;
+    }
+
+    /* ── Layout ── */
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 60px 24px 100px;
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 32px;
+      margin-bottom: 24px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .card:hover {
+      border-color: rgba(124,111,247,0.3);
+      box-shadow: 0 0 40px rgba(124,111,247,0.06);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    .card-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      font-size: 1.3rem;
+      flex-shrink: 0;
+    }
+
+    .card-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .card-sub {
+      font-size: 0.82rem;
+      color: var(--subtext);
+      margin-top: 2px;
+    }
+
+    /* ── Section title ── */
+    .section-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* ── Rule list ── */
+    .rule-list { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+
+    .rule-item {
+      display: flex;
+      gap: 14px;
+      padding: 14px 16px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      align-items: flex-start;
+      transition: background 0.2s;
+    }
+
+    .rule-item:hover { background: rgba(124,111,247,0.06); }
+
+    .rule-number {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--accent);
+      background: rgba(124,111,247,0.12);
+      border: 1px solid rgba(124,111,247,0.2);
+      padding: 2px 8px;
+      border-radius: 6px;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .rule-text strong { color: #fff; display: block; margin-bottom: 3px; }
+    .rule-text span { font-size: 0.88rem; color: var(--subtext); }
+
+    /* ── Points table ── */
+    .points-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 12px;
+    }
+
+    .points-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      text-align: center;
+      transition: transform 0.2s;
+    }
+
+    .points-card:hover { transform: translateY(-2px); }
+
+    .points-amount {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #fff;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .points-label { font-size: 0.82rem; color: var(--subtext); display: block; }
+    .points-tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-top: 8px;
+      letter-spacing: 0.05em;
+    }
+
+    /* ── Timeline (acciones) ── */
+    .timeline { display: flex; flex-direction: column; gap: 0; position: relative; }
+
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 22px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: linear-gradient(to bottom, var(--accent), transparent);
+    }
+
+    .tl-item {
+      display: flex;
+      gap: 20px;
+      padding: 16px 0;
+      position: relative;
+    }
+
+    .tl-dot {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 1.1rem;
+      flex-shrink: 0;
+      border: 2px solid;
+      z-index: 1;
+    }
+
+    .tl-content { flex: 1; padding-top: 6px; }
+    .tl-title { font-weight: 700; color: #fff; margin-bottom: 4px; }
+    .tl-desc { font-size: 0.88rem; color: var(--subtext); }
+    .tl-threshold {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      margin-top: 6px;
+    }
+
+    /* color helpers */
+    .c-warn { color: var(--warn); border-color: var(--warn); background: rgba(240,178,50,0.08); }
+    .c-mute { color: var(--mute); border-color: var(--mute); background: rgba(90,168,240,0.08); }
+    .c-kick { color: var(--kick); border-color: var(--kick); background: rgba(255,123,84,0.08); }
+    .c-ban  { color: var(--ban);  border-color: var(--ban);  background: rgba(231,76,60,0.08); }
+    .c-green { color: var(--green); }
+
+    .tl-threshold.c-warn { color: var(--warn); }
+    .tl-threshold.c-mute { color: var(--mute); }
+    .tl-threshold.c-kick { color: var(--kick); }
+    .tl-threshold.c-ban  { color: var(--ban); }
+
+    /* ── Decay info ── */
+    .info-box {
+      display: flex;
+      gap: 14px;
+      padding: 16px;
+      background: rgba(88,101,242,0.08);
+      border: 1px solid rgba(88,101,242,0.25);
+      border-radius: 10px;
+      margin-top: 20px;
+      align-items: flex-start;
+      font-size: 0.9rem;
+    }
+
+    .info-box .icon { font-size: 1.4rem; flex-shrink: 0; }
+    .info-box p { color: var(--subtext); }
+    .info-box strong { color: var(--text); }
+
+    /* ── Appeal section ── */
+    .appeal-box {
+      background: linear-gradient(135deg, rgba(124,111,247,0.1) 0%, rgba(88,101,242,0.05) 100%);
+      border: 1px solid rgba(124,111,247,0.25);
+      border-radius: var(--radius);
+      padding: 32px;
+      text-align: center;
+      margin-top: 32px;
+    }
+
+    .appeal-box h3 { font-size: 1.2rem; font-weight: 700; color: #fff; margin-bottom: 8px; }
+    .appeal-box p { font-size: 0.9rem; color: var(--subtext); max-width: 500px; margin: 0 auto; }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 24px;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--subtext);
+    }
+
+    footer a { color: var(--accent); text-decoration: none; }
+
+    /* ── Nav dots ── */
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(14,17,23,0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .nav::-webkit-scrollbar { display: none; }
+
+    .nav a {
+      text-decoration: none;
+      color: var(--subtext);
+      font-size: 0.84rem;
+      font-weight: 500;
+      padding: 14px 12px;
+      border-bottom: 2px solid transparent;
+      white-space: nowrap;
+      transition: color 0.2s, border-color 0.2s;
+    }
+
+    .nav a:hover { color: #fff; border-bottom-color: var(--accent); }
+
+    @media (max-width: 600px) {
+      .card { padding: 20px; }
+      .points-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<nav class="nav">
+  <a href="#reglas">📋 Reglas</a>
+  <a href="#infracciones">⚠️ Infracciones</a>
+  <a href="#puntos">🔢 Sistema de Puntos</a>
+  <a href="#sanciones">⚖️ Sanciones</a>
+  <a href="#apelacion">📨 Apelación</a>
+</nav>
+
+<!-- Hero -->
+<header class="hero">
+  <div class="badge"><span></span> Servidor Oficial · Novarito</div>
+  <h1>Reglamento del Servidor</h1>
+  <p class="hero-sub">
+    Este documento establece las normas de convivencia, el sistema de moderación automatizada y
+    los procedimientos legales que rigen este servidor de Discord.
+  </p>
+  <div class="last-updated">🗓 Última actualización: Julio 2026</div>
+</header>
+
+<div class="container">
+
+  <!-- ── Sección 1: Reglas ── -->
+  <p class="section-title" id="reglas">Sección 1 — Reglas de Convivencia</p>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon" style="background:rgba(124,111,247,0.12);">📋</div>
+      <div>
+        <div class="card-title">Normas Generales</div>
+        <div class="card-sub">Aplican en todos los canales, incluyendo mensajes directos con el bot.</div>
+      </div>
+    </div>
+    <ul class="rule-list">
+      <li class="rule-item">
+        <span class="rule-number">#01</span>
+        <div class="rule-text">
+          <strong>Respeto mutuo</strong>
+          <span>Tratar a todos los miembros con dignidad y respeto. No se permiten insultos, acoso, burlas ni discriminación de ningún tipo, ya sea por raza, género, religión, orientación sexual o condición económica.</span>
+        </div>
+      </li>
+      <li class="rule-item">
+        <span class="rule-number">#02</span>
+        <div class="rule-text">
+          <strong>Prohibido el spam</strong>
+          <span>No se permite enviar mensajes repetidos, cadenas de texto, publicidad no autorizada, invitaciones a otros servidores o links sin contexto.</span>
+        </div>
+      </li>
+      <li class="rule-item">
+        <span class="rule-number">#03</span>
+        <div class="rule-text">
+          <strong>Sin contenido NSFW</strong>
+          <span>Está estrictamente prohibido compartir contenido sexual, violento o perturbador fuera de los canales habilitados para ello. El incumplimiento lleva sanción inmediata.</span>
+        </div>
+      </li>
+      <li class="rule-item">
+        <span class="rule-number">#04</span>
+        <div class="rule-text">
+          <strong>No doxxing ni información personal</strong>
+          <span>Publicar datos personales de terceros sin su consentimiento (nombre real, dirección, teléfono, fotos privadas, etc.) está terminantemente prohibido y conlleva ban permanente.</span>
+        </div>
+      </li>
+      <li class="rule-item">
+        <span class="rule-number">#05</span>
+        <div class="rule-text">
+          <strong>Sin amenazas ni incitación a la violencia</strong>
+          <span>Cualquier mensaje que amenace, desee daño físico o emocional a otro miembro, o incite a la violencia, será eliminado y sancionado de inmediato.</span>
+        </div>
+      </li>
+      <li class="rule-item">
+        <span class="rule-number">#06</span>
+        <div class="rule-text">
+          <strong>Prohibidas las estafas y el phishing</strong>
+          <span>No se permite compartir enlaces de phishing, solicitar datos bancarios, contraseñas o realizar cualquier tipo de estafa. Este tipo de infracción resulta en ban inmediato y reporte a Discord.</span>
+        </div>
+      </li>
+      <li class="rule-item">
+        <span class="rule-number">#07</span>
+        <div class="rule-text">
+          <strong>Uso correcto de los canales</strong>
+          <span>Publicar en el canal correspondiente según la temática. Los moderadores pueden redirigir o borrar mensajes fuera de lugar sin previo aviso.</span>
+        </div>
+      </li>
+      <li class="rule-item">
+        <span class="rule-number">#08</span>
+        <div class="rule-text">
+          <strong>Cumplimiento de los Términos de Servicio de Discord</strong>
+          <span>Todos los miembros están sujetos a los <a href="https://discord.com/terms" target="_blank" style="color:var(--accent)">Términos de Servicio de Discord</a>. Las violaciones serán reportadas directamente a Discord Inc.</span>
+        </div>
+      </li>
+    </ul>
+  </div>
+
+  <!-- ── Sección 2: Infracciones ── -->
+  <p class="section-title" id="infracciones">Sección 2 — Tipos de Infracción</p>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon" style="background:rgba(240,178,50,0.12);">⚠️</div>
+      <div>
+        <div class="card-title">Clasificación de Infracciones por el Bot de Moderación</div>
+        <div class="card-sub">El bot Novarito analiza cada mensaje en tiempo real con Inteligencia Artificial.</div>
+      </div>
+    </div>
+    <div class="points-grid">
+      <div class="points-card">
+        <span class="points-amount" style="color:var(--subtext)">10</span>
+        <span class="points-label">puntos</span>
+        <strong style="font-size:0.9rem;color:#fff;display:block;margin-top:6px;">🔁 Spam</strong>
+        <span class="points-tag c-warn">Leve</span>
+        <p style="font-size:0.78rem;color:var(--subtext);margin-top:8px">Publicidad, cadenas repetitivas o links sin contexto.</p>
+      </div>
+      <div class="points-card">
+        <span class="points-amount" style="color:var(--warn)">20</span>
+        <span class="points-label">puntos</span>
+        <strong style="font-size:0.9rem;color:#fff;display:block;margin-top:6px;">💢 Insulto Leve</strong>
+        <span class="points-tag c-warn">Moderado</span>
+        <p style="font-size:0.78rem;color:var(--subtext);margin-top:8px">Ofensas casuales hacia otro miembro.</p>
+      </div>
+      <div class="points-card">
+        <span class="points-amount" style="color:var(--kick)">40</span>
+        <span class="points-label">puntos</span>
+        <strong style="font-size:0.9rem;color:#fff;display:block;margin-top:6px;">😡 Amenaza</strong>
+        <span class="points-tag c-kick">Grave</span>
+        <p style="font-size:0.78rem;color:var(--subtext);margin-top:8px">Desear o amenazar con daño físico o emocional.</p>
+      </div>
+      <div class="points-card">
+        <span class="points-amount" style="color:var(--ban)">70</span>
+        <span class="points-label">puntos</span>
+        <strong style="font-size:0.9rem;color:#fff;display:block;margin-top:6px;">🔞 NSFW</strong>
+        <span class="points-tag c-ban">Muy Grave</span>
+        <p style="font-size:0.78rem;color:var(--subtext);margin-top:8px">Contenido sexual explícito fuera de canales habilitados.</p>
+      </div>
+      <div class="points-card">
+        <span class="points-amount" style="color:var(--ban)">80</span>
+        <span class="points-label">puntos</span>
+        <strong style="font-size:0.9rem;color:#fff;display:block;margin-top:6px;">🚫 Racismo</strong>
+        <span class="points-tag c-ban">Muy Grave</span>
+        <p style="font-size:0.78rem;color:var(--subtext);margin-top:8px">Discriminación por raza, religión u origen.</p>
+      </div>
+      <div class="points-card">
+        <span class="points-amount" style="color:var(--ban)">100</span>
+        <span class="points-label">puntos</span>
+        <strong style="font-size:0.9rem;color:#fff;display:block;margin-top:6px;">📛 Doxxing / Scam</strong>
+        <span class="points-tag c-ban">Crítico</span>
+        <p style="font-size:0.78rem;color:var(--subtext);margin-top:8px">Datos personales ajenos o estafas. Ban automático.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Sección 3: Sistema de Puntos ── -->
+  <p class="section-title" id="puntos">Sección 3 — Sistema de Puntos</p>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon" style="background:rgba(90,168,240,0.12);">🔢</div>
+      <div>
+        <div class="card-title">¿Cómo funcionan los puntos?</div>
+        <div class="card-sub">Los puntos se acumulan automáticamente con cada infracción detectada.</div>
+      </div>
+    </div>
+    <p style="color:var(--subtext);margin-bottom:16px;font-size:0.9rem;">
+      Cada vez que el bot detecta un mensaje que viola las reglas, suma puntos a tu perfil. Cuanto mayor sea la gravedad de la infracción, más puntos recibirás. Si los puntos llegan a ciertos umbrales, se aplicará la sanción correspondiente de forma automática.
+    </p>
+    <div class="info-box">
+      <div class="icon">⏳</div>
+      <p>
+        <strong>Los puntos expiran automáticamente.</strong> El sistema descuenta 20 puntos por cada 30 días sin infracciones, premiando el buen comportamiento. Si llevas un mes sin problemas, tu historial mejora progresivamente.
+      </p>
+    </div>
+    <div class="info-box" style="margin-top:12px; background:rgba(46,204,113,0.06); border-color:rgba(46,204,113,0.25);">
+      <div class="icon">🛡️</div>
+      <p>
+        <strong>Análisis con Inteligencia Artificial.</strong> El bot utiliza modelos de lenguaje avanzados para analizar el contexto antes de sancionar. Evita los falsos positivos considerando sarcasmo, juego entre amigos y respuestas a provocaciones previas. Solo sanciona si su confianza supera el 85%.
+      </p>
+    </div>
+  </div>
+
+  <!-- ── Sección 4: Sanciones ── -->
+  <p class="section-title" id="sanciones">Sección 4 — Sanciones y Procedimiento</p>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon" style="background:rgba(231,76,60,0.12);">⚖️</div>
+      <div>
+        <div class="card-title">Escala de Sanciones</div>
+        <div class="card-sub">Las sanciones se aplican automáticamente según los puntos acumulados.</div>
+      </div>
+    </div>
+
+    <div class="timeline">
+      <div class="tl-item">
+        <div class="tl-dot c-warn">⚠️</div>
+        <div class="tl-content">
+          <div class="tl-title">Advertencia (Warning)</div>
+          <div class="tl-desc">
+            El mensaje es eliminado automáticamente. Se envía una advertencia pública mencionando al usuario con el motivo. El historial queda registrado. No hay restricción de uso del servidor aún.
+          </div>
+          <span class="tl-threshold c-warn">A partir de 20 puntos</span>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot c-mute">🔇</div>
+        <div class="tl-content">
+          <div class="tl-title">Silencio Temporal (Timeout/Mute)</div>
+          <div class="tl-desc">
+            El usuario pierde la capacidad de enviar mensajes durante <strong>10 minutos</strong>. El mensaje es eliminado. Se notifica públicamente el motivo. Reincidencias pueden alargar el tiempo de silencio.
+          </div>
+          <span class="tl-threshold c-mute">A partir de 40 puntos</span>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot c-kick">👢</div>
+        <div class="tl-content">
+          <div class="tl-title">Expulsión Temporal (Kick)</div>
+          <div class="tl-desc">
+            El usuario es expulsado del servidor. Puede volver a unirse usando una invitación válida, pero su historial de puntos persiste. Si reincide inmediatamente, el sistema escala al ban.
+          </div>
+          <span class="tl-threshold c-kick">A partir de 70 puntos</span>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot c-ban">🔨</div>
+        <div class="tl-content">
+          <div class="tl-title">Baneo Permanente</div>
+          <div class="tl-desc">
+            El usuario es baneado del servidor de forma permanente. No puede unirse nuevamente usando ninguna invitación. En casos de doxxing, scam o contenido ilegal, se reporta adicionalmente a Discord Inc.
+          </div>
+          <span class="tl-threshold c-ban">A partir de 100 puntos</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-box" style="margin-top:24px;">
+      <div class="icon">⚡</div>
+      <p>
+        <strong>Sanciones Inmediatas (sin acumulación de puntos):</strong> Doxxing, scam/phishing y contenido ilegal resultan en ban inmediato independientemente del historial previo del usuario.
+      </p>
+    </div>
+  </div>
+
+  <!-- ── Sección 5: Apelación ── -->
+  <p class="section-title" id="apelacion">Sección 5 — Apelación y Derechos del Usuario</p>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon" style="background:rgba(46,204,113,0.12);">📨</div>
+      <div>
+        <div class="card-title">¿Crees que la sanción fue un error?</div>
+        <div class="card-sub">Tienes derecho a apelar cualquier decisión automatizada.</div>
+      </div>
+    </div>
+    <ul class="rule-list">
+      <li class="rule-item">
+        <span class="rule-number">A</span>
+        <div class="rule-text">
+          <strong>Derecho a la apelación</strong>
+          <span>Todo usuario sancionado tiene derecho a contactar a un administrador humano para revisar la decisión del bot. Las sanciones automáticas pueden ser reversadas si se demuestra un falso positivo.</span>
+        </div>
+      </li>
+      <li class="rule-item">
+        <span class="rule-number">B</span>
+        <div class="rule-text">
+          <strong>Procedimiento de apelación</strong>
+          <span>Contacta directamente a un administrador por mensaje privado, explicando el contexto del mensaje eliminado. Se revisará el registro de IA y el historial completo antes de tomar una decisión final.</span>
+        </div>
+      </li>
+      <li class="rule-item">
+        <span class="rule-number">C</span>
+        <div class="rule-text">
+          <strong>Decisiones no apelables</strong>
+          <span>Los baneos por doxxing, scam, phishing o contenido ilegal son definitivos y no están sujetos a revisión. El reporte a Discord Inc. tampoco puede ser revertido una vez enviado.</span>
+        </div>
+      </li>
+      <li class="rule-item">
+        <span class="rule-number">D</span>
+        <div class="rule-text">
+          <strong>Privacidad de los datos</strong>
+          <span>El historial de moderación se almacena en nuestros servidores privados únicamente para fines de seguridad. No se comparte con terceros salvo obligación legal o reportes a Discord.</span>
+        </div>
+      </li>
+    </ul>
+    <div class="appeal-box">
+      <h3>¿Fuiste sancionado injustamente?</h3>
+      <p>Contacta a un administrador del servidor explicando el contexto. Revisamos cada caso con transparencia y sin sesgos. Los errores del sistema automatizado siempre pueden ser corregidos por un humano.</p>
+    </div>
+  </div>
+
+  <!-- Legal note -->
+  <div class="card" style="border-color:rgba(231,76,60,0.2); background:rgba(231,76,60,0.04);">
+    <div class="card-header">
+      <div class="card-icon" style="background:rgba(231,76,60,0.12);">⚖️</div>
+      <div>
+        <div class="card-title">Nota Legal</div>
+        <div class="card-sub">Marco legal aplicable</div>
+      </div>
+    </div>
+    <p style="font-size:0.88rem;color:var(--subtext);line-height:1.7">
+      Al unirte a este servidor, aceptas las presentes normas en su totalidad, así como los 
+      <a href="https://discord.com/terms" target="_blank" style="color:var(--accent)">Términos de Servicio de Discord</a> y su 
+      <a href="https://discord.com/guidelines" target="_blank" style="color:var(--accent)">Política de Uso Aceptable</a>. 
+      El incumplimiento de las normas de este servidor puede resultar en la pérdida permanente del acceso. 
+      El servidor y sus administradores no se hacen responsables del contenido publicado por terceros usuarios. 
+      Este reglamento puede ser actualizado en cualquier momento; los cambios serán notificados en los canales oficiales.
+    </p>
+  </div>
+
+</div>
+
+<footer>
+  <p>Novarito Bot · Servidor Oficial · <a href="https://discord.com/terms" target="_blank">Términos de Discord</a></p>
+  <p style="margin-top:6px;">© 2026 — Todos los derechos reservados. Documento generado para uso interno del servidor.</p>
+</footer>
+
+</body>
+</html>

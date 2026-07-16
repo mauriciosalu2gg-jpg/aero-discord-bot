@@ -247,7 +247,8 @@ async function runAutoModeration(message) {
 
   await logModeration(guildId, message.author.id, action, aiResult.severity_reason, aiResult.confidence);
 
-  if (message.deletable && action !== 'WARN') {
+  // Siempre eliminar el mensaje dañino, sin importar el nivel de sanción.
+  if (message.deletable) {
     await message.delete().catch(() => {});
   }
 
@@ -255,7 +256,7 @@ async function runAutoModeration(message) {
     switch(action) {
       case 'WARN':
         await message.channel.send({
-          content: `⚠️ <@${message.author.id}> advertencia: ${aiResult.severity_reason} (Puntos: ${totalPoints})`,
+          content: `⚠️ <@${message.author.id}> tu mensaje fue eliminado.\n**Motivo:** ${aiResult.severity_reason}\n**Puntos acumulados:** ${totalPoints}/100 — Acumular más puede resultar en silencio, expulsión o baneo.`,
           allowedMentions: { users: [message.author.id] }
         });
         break;
