@@ -47,6 +47,11 @@ export const commandDefinitions = [
       .setName('ver_personalidad')
       .setDescription('Ver cómo la IA te recuerda actualmente')
       .setRequired(false)
+    )
+    .addUserOption(opt => opt
+      .setName('pts_reset')
+      .setDescription('Resetear puntos de moderación de un usuario (Solo Owners)')
+      .setRequired(false)
     ),
   
   new SlashCommandBuilder()
