@@ -78,17 +78,25 @@ function buildProviderChain(panelConfig, recentTokens, intent = 'chat') {
   
   const isFastIntent = intent === 'moderation' || intent === 'summary';
 
-  // Si es chat, respetamos la preferencia del panel.
-  // Si es moderacion/resumen, ignoramos la preferencia de chat y vamos directo a los livianos.
-  if (!isFastIntent && panelConfig?.proveedorPrimario) {
+  // Si tenemos panelConfig, siempre tomamos su API key como proveedor primario
+  // porque el usuario pudo haberla puesto en la web y no en el .env.
+  if (panelConfig?.proveedorPrimario) {
     const name = panelConfig.proveedorPrimario;
     const preferredModel = panelConfig.modeloActivo;
     const apiKey = panelConfig.apiKey || envProviders.find(p => p.name === name)?.apiKey;
     
     if (apiKey) {
-      const ladder = preferredModel
-        ? [preferredModel, ...getModelLadder(name).filter(m => m !== preferredModel)]
-        : getModelLadder(name);
+      let ladder = getModelLadder(name);
+      
+      // Si es chat normal, el preferredModel va primero.
+      if (!isFastIntent && preferredModel) {
+        ladder = [preferredModel, ...ladder.filter(m => m !== preferredModel)];
+      } 
+      // Si es un intent rápido o muchos tokens, invertimos la escalera para usar el más rápido/liviano.
+      else if (isFastIntent || recentTokens > TOKENS_THRESHOLD) {
+        ladder = ladder.slice().reverse();
+      }
+      
       chain.push({ name, apiKey, models: ladder });
       seen.add(name);
     }
@@ -96,9 +104,9 @@ function buildProviderChain(panelConfig, recentTokens, intent = 'chat') {
 
   for (const provider of envProviders) {
     if (seen.has(provider.name)) continue;
-    // Si es intent rapido (moderacion/resumen) o hay muchos tokens, usamos los modelos livianos primero.
+    // Para los proveedores secundarios, aplicamos la misma logica de velocidad
     const models = (isFastIntent || recentTokens > TOKENS_THRESHOLD)
-      ? [...provider.models].reverse()
+      ? provider.models.slice().reverse() 
       : provider.models;
     chain.push({ name: provider.name, apiKey: provider.apiKey, models });
     seen.add(provider.name);
