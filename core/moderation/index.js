@@ -33,10 +33,18 @@ const DECAY_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
 
 // ── Regex Rapido ──────────────────────────────────
 const SUSPICIOUS_WORDS = [
+  // Insultos clásicos
   'bolud', 'pendej', 'idiot', 'imbecil', 'estupid', 'inutil', 'basura', 'mierda',
   'sorete', 'gil', 'put', 'maric', 'hdp', 'malparid', 'desgraciad', 'trol',
   'pelotud', 'forr', 'nefast', 'matate', 'muerete', 'desaparece',
-  'ptm', 'alv', 'ctm', 'cdsm', 'kbro', 'vrga', 'verga', 'mrd', 'mierd', 'mmg', 'hdspm'
+  // Mexicanos / Latinos explícitos
+  'chinga', 'chingar', 'chingada', 'cabron', 'mamada', 'mamaguevo', 'mamagwebo',
+  'conchatumadre', 'culero', 'pinche', 'joto', 'zorra', 'perra', 'mierdero', 'pendejada',
+  'verga', 'vrga', 'mierd', 'ojete',
+  // Abreviaciones comunes
+  'ptm', 'alv', 'ctm', 'cdsm', 'kbro', 'mrd', 'mmg', 'hdspm', 'csm', 'ojt', 'pdj', 
+  'pndjo', 'pndejo', 'cbrn', 'kbron', 'vrg', 'vga', 'pt', 'ptos', 'ptas',
+  'chngd', 'mmd', 'mmdas', 'mmhvo', 'pnch', 'mrcn', 'zrra', 'prra', 'clr'
 ];
 const SUSPICIOUS_REGEX = new RegExp(`\\b(${SUSPICIOUS_WORDS.join('|')})`, 'i');
 
@@ -72,11 +80,14 @@ export function looksSuspicious(text) {
   if (!text) return false;
   
   // Heuristicas basicas:
-  // 1. Matchea palabras sospechosas
-  // 2. Multiples links (spam/scam)
-  // 3. Mayusculas excesivas (gritos + insultos)
-  
-  if (SUSPICIOUS_REGEX.test(text)) return true;
+  // 1. Matchea palabras sospechosas y variaciones leetspeak (numeros por letras)
+  const normalized = text.toLowerCase()
+    .replace(/@/g, 'a').replace(/4/g, 'a')
+    .replace(/3/g, 'e').replace(/1/g, 'i')
+    .replace(/!/g, 'i').replace(/0/g, 'o')
+    .replace(/5/g, 's').replace(/7/g, 't');
+
+  if (SUSPICIOUS_REGEX.test(text) || SUSPICIOUS_REGEX.test(normalized)) return true;
   
   const linkCount = (text.match(/http[s]?:\/\//g) || []).length;
   if (linkCount >= 3) return true;
