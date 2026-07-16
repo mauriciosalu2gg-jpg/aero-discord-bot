@@ -19,8 +19,6 @@ function displayName(name) {
 }
 
 export async function handleEstado(interaction) {
-  await interaction.deferReply({ ephemeral: true });
-
   const active = getActiveProvider();
   const forced = getForcedProvider();
   const providerNames = secrets.PROVIDER_PRIORITY;
@@ -66,5 +64,5 @@ export async function handleEstado(interaction) {
     footer: { text: 'Sistema de Diagnóstico Integrado' }
   };
 
-  await interaction.editReply({ embeds: [embed] });
+  await interaction.followUp({ embeds: [embed] });
 }

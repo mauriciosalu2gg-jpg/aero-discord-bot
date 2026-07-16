@@ -1,14 +1,9 @@
 import { generateImage } from '../../../services/ImageManager.js';
 
-export async function handleImaginar(interaction) {
-  const prompt = interaction.options.getString('prompt');
-  
-  await interaction.deferReply();
-
+export async function handleImaginar(interaction, prompt) {
   try {
     const imageResult = await generateImage(prompt);
-
-    await interaction.editReply({
+    await interaction.followUp({
       content: `🎨 **Prompt:** ${prompt}`,
       embeds: [{
         color: 0x3498db,
@@ -18,6 +13,6 @@ export async function handleImaginar(interaction) {
     });
   } catch (err) {
     console.error('[imaginar]', err);
-    await interaction.editReply({ content: 'Hubo un error al generar la imagen.' });
+    await interaction.followUp({ content: 'Hubo un error al generar la imagen.' });
   }
 }
