@@ -263,10 +263,17 @@ async function runAutoModeration(message) {
   try {
     switch(action) {
       case 'WARN':
-        await message.channel.send({
-          content: `⚠️ <@${message.author.id}> tu mensaje fue eliminado.\n**Motivo:** ${aiResult.severity_reason}\n**Puntos acumulados:** ${totalPoints}/100 — Acumular más puede resultar en silencio, expulsión o baneo.`,
-          allowedMentions: { users: [message.author.id] }
-        });
+        if (aiResult.rule_violated === 'JUEGO_STAFF') {
+          await message.channel.send({
+            content: aiResult.severity_reason,
+            allowedMentions: { users: [message.author.id] }
+          });
+        } else {
+          await message.channel.send({
+            content: `⚠️ <@${message.author.id}> tu mensaje fue eliminado.\n**Motivo:** ${aiResult.severity_reason}\n**Puntos acumulados:** ${totalPoints}/100 — Acumular más puede resultar en silencio, expulsión o baneo.`,
+            allowedMentions: { users: [message.author.id] }
+          });
+        }
         break;
       case 'MUTE':
         if (member && (botHasAdmin || member.moderatable)) {

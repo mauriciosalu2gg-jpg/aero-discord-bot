@@ -17,6 +17,8 @@ const POINTS_TABLE = {
   DOXXING:           100,
   SCAM:              100,
   CONTENIDO_MENOR:   100,
+  LENGUAJE_VULGAR:   10,
+  JUEGO_STAFF:       0
 };
 
 const THRESHOLDS = {
@@ -129,17 +131,18 @@ CLASIFICACIÓN DE INFRACCIONES (Reglamento §02 y §05):
 - DOXXING: revelar datos personales de terceros sin consentimiento. (100 pts - BAN inmediato)
 - SCAM: phishing, estafas, malware o solicitud de credenciales. (100 pts - BAN inmediato)
 - CONTENIDO_MENOR: cualquier contenido sexual que involucre menores. (100 pts - BAN inmediato + reporte)
-- JUEGO_STAFF: Exclusivo si el usuario ES PARTE DEL STAFF y está usando groserías o palabras altisonantes en claro tono de juego o broma. (0 pts)
+- LENGUAJE_VULGAR: uso de groserías, palabras altisonantes o vulgaridades explícitas sin ir dirigidas a ofender a alguien en específico. (10 pts)
+- JUEGO_STAFF: Exclusivo si el usuario ES PARTE DEL STAFF y está usando groserías, vulgaridades o palabras altisonantes en claro tono de juego o broma. (0 pts)
 - NINGUNA: el mensaje no viola ninguna norma del reglamento.
 
 IMPORTANTE Y EXCEPCIÓN DEL STAFF:
-1. Analiza el contexto antes de clasificar. Considera el sarcasmo y respuestas a provocaciones previas. NO clasifiques como infracción conversaciones informales.
-2. Si el usuario ES DEL STAFF ("SÍ") y usa palabras altisonantes en tono de juego, DEBES clasificarlo como "JUEGO_STAFF" para no sancionarlo. En ese caso, en el "severity_reason" escribe un recordatorio amigable invitándolos a dar el buen ejemplo (Ej: "¡Hey Staff! Recuerden que somos el ejemplo de la comunidad, tratemos de moderar un poco el vocabulario incluso en juego 😉").
+1. Analiza el contexto antes de clasificar. Considera el sarcasmo y respuestas a provocaciones previas. NO clasifiques como infracción conversaciones informales sanas.
+2. Si el usuario ES DEL STAFF ("SÍ") y usa palabras altisonantes, groserías o vulgaridades (LENGUAJE_VULGAR), DEBES clasificarlo SIEMPRE como "JUEGO_STAFF" para no sancionarlo. En ese caso, en el "severity_reason" escribe un recordatorio amigable invitándolos a dar el buen ejemplo (Ej: "¡Hey Staff! Recuerden que somos el ejemplo de la comunidad, tratemos de moderar un poco el vocabulario incluso en juego 😉").
 3. Para el resto de los usuarios o infracciones reales graves, aplica las normas al pie de la letra (cero tolerancia a NSFW/Doxxing/Scam).
 
 Responde ÚNICAMENTE con JSON válido, sin texto adicional:
 {
-  "rule_violated": "SPAM|INSULTO_LEVE|ACOSO|IMPERSONACION|AMENAZA|DESINFORMACION|NSFW|VIOLENCIA_GRAFICA|RACISMO|DISCURSO_ODIO|DOXXING|SCAM|CONTENIDO_MENOR|JUEGO_STAFF|NINGUNA",
+  "rule_violated": "SPAM|INSULTO_LEVE|ACOSO|IMPERSONACION|AMENAZA|DESINFORMACION|NSFW|VIOLENCIA_GRAFICA|RACISMO|DISCURSO_ODIO|DOXXING|SCAM|CONTENIDO_MENOR|LENGUAJE_VULGAR|JUEGO_STAFF|NINGUNA",
   "confidence": 0,
   "action_suggested": "WARN|MUTE|KICK|BAN|NONE",
   "severity_reason": "Descripcion neutral y profesional de la infraccion (o recordatorio amistoso si es JUEGO_STAFF)"
