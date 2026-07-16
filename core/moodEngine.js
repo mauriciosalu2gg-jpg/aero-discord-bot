@@ -38,6 +38,7 @@ export function detectMood({ content, mentionsBot, targetsOther }) {
   const insultsOther = targetsOther && countHits(lower, INSULT_WORDS) > 0;
   const isHype = countHits(lower, HYPE_WORDS) > 0;
   const isFunny = countHits(lower, FUNNY_WORDS) > 0;
+  const isFlirty = countHits(lower, FLIRTY_WORDS) > 0;
   const isBored = countHits(lower, BORED_WORDS) > 0;
   const isDramatic = countHits(lower, DRAMA_WORDS) > 0;
 
