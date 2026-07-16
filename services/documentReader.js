@@ -1,4 +1,4 @@
-import pdfParse from 'pdf-parse/lib/pdf-parse.js';
+import { PDFParse } from 'pdf-parse';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 const MAX_TEXT_LENGTH = 5000; // ~2-3 pages of text max to avoid context explosion on small AI models
@@ -40,7 +40,8 @@ export async function processAttachments(attachments) {
 
       if (isPdf) {
         try {
-          const pdfData = await pdfParse(Buffer.from(buffer));
+          const parser = new PDFParse({ data: buffer });
+          const pdfData = await parser.getText();
           let text = pdfData.text.trim();
           if (text.length > MAX_TEXT_LENGTH) {
             text = text.substring(0, MAX_TEXT_LENGTH) + '\n...[TEXTO TRUNCADO POR LÍMITE DE SEGURIDAD]';
