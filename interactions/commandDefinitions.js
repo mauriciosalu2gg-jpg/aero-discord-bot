@@ -61,6 +61,14 @@ export const commandDefinitions = [
       .setName('activar')
       .setDescription('true = activado, false = desactivado')
       .setRequired(true))
+    .addIntegerOption(opt => opt
+      .setName('horas')
+      .setDescription('Duración activa en horas (ej: 24). Usar solo si activas.')
+      .setRequired(false))
+    .addIntegerOption(opt => opt
+      .setName('dias')
+      .setDescription('Duración activa en días (ej: 1). Usar solo si activas.')
+      .setRequired(false))
 ];
 
 export default commandDefinitions;

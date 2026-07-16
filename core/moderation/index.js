@@ -47,18 +47,30 @@ const SUSPICIOUS_WORDS = [
 ];
 const SUSPICIOUS_REGEX = new RegExp(`\\b(${SUSPICIOUS_WORDS.join('|')})`, 'i');
 
-// ── Flags de Activacion de Moderacion ─────────────
+// ── Flags de Activacion de Moderacion (Con soporte para ciclos temporales) ──
 const activeGuildsCache = new Map();
 
 export function isModerationActive(guildId) {
-  return !!activeGuildsCache.get(guildId);
+  const state = activeGuildsCache.get(guildId);
+  return !!(state && state.active && state.status === 'active');
 }
 
-export async function setModerationActive(guildId, active) {
-  activeGuildsCache.set(guildId, active);
+export async function setModerationActive(guildId, active, durationMs = 0, channelId = null, userId = null) {
+  const state = {
+    active,
+    status: active ? 'active' : 'disabled',
+    cycleStart: active ? Date.now() : 0,
+    cycleDuration: active ? durationMs : 0,
+    nextActionAt: (active && durationMs > 0) ? Date.now() + durationMs : 0,
+    channelId: active ? channelId : null,
+    userWhoActivated: active ? userId : null
+  };
+
+  activeGuildsCache.set(guildId, state);
   if (!db) return;
   await db.collection('guilds').doc(guildId).collection('stats').doc('moderation').set({
-    active, updatedAt: new Date().toISOString()
+    ...state,
+    updatedAt: new Date().toISOString()
   }, { merge: true });
 }
 
@@ -68,10 +80,115 @@ export async function hydrateModerationFlags() {
     const guildsSnap = await db.collection('guilds').get();
     for (const guildDoc of guildsSnap.docs) {
       const modDoc = await guildDoc.ref.collection('stats').doc('moderation').get();
-      if (modDoc.exists) activeGuildsCache.set(guildDoc.id, !!modDoc.data().active);
+      if (modDoc.exists) {
+        const data = modDoc.data();
+        activeGuildsCache.set(guildDoc.id, {
+          active: !!data.active,
+          status: data.status || (data.active ? 'active' : 'disabled'),
+          cycleStart: data.cycleStart || Date.now(),
+          cycleDuration: data.cycleDuration || 0,
+          nextActionAt: data.nextActionAt || 0,
+          channelId: data.channelId || null,
+          userWhoActivated: data.userWhoActivated || null
+        });
+      }
     }
   } catch (err) {
     console.error('[moderation/hydrate]', err.message);
+  }
+}
+
+export async function processTimedModeration(client) {
+  const now = Date.now();
+  for (const [guildId, state] of activeGuildsCache.entries()) {
+    if (!state || !state.active || state.cycleDuration <= 0) continue;
+
+    if (state.status === 'active' && now >= state.nextActionAt) {
+      console.log(`[moderation-timer] Ciclo activo finalizado para el servidor ${guildId}. Evaluando infracciones...`);
+      let hasInfractions = false;
+      try {
+        if (db) {
+          const logsSnap = await db.collection('guilds').doc(guildId).collection('moderationLogs')
+            .where('timestamp', '>=', state.cycleStart)
+            .get();
+          hasInfractions = logsSnap.size > 0;
+        }
+      } catch (err) {
+        console.error('[moderation-timer] Error consultando logs de infracciones:', err.message);
+      }
+
+      const guild = client.guilds.cache.get(guildId);
+      const targetChannel = guild?.channels.cache.get(state.channelId) || 
+                            guild?.channels.cache.find(c => c.isTextBased() && (c.name.includes('avisos') || c.name.includes('anuncios') || c.name.includes('pruebas')));
+
+      if (!hasInfractions) {
+        // Opción A: Desactivar por 10 horas
+        const restDuration = 10 * 60 * 60 * 1000; // 10 horas
+        state.status = 'resting';
+        state.nextActionAt = now + restDuration;
+        
+        await saveModerationState(guildId, state);
+
+        if (targetChannel) {
+          const { EmbedBuilder } = await import('discord.js');
+          const embed = new EmbedBuilder()
+            .setTitle('💤 Auto-Moderación en Reposo')
+            .setColor(0x3498DB)
+            .setDescription(`No se detectó ninguna infracción en las últimas **${Math.round(state.cycleDuration / (60 * 60 * 1000))} horas**.\n\nLa moderación automática entrará en estado de reposo por **10 horas** para descansar. Vuelve automáticamente después. 🌸`)
+            .setTimestamp();
+          await targetChannel.send({ embeds: [embed] }).catch(() => {});
+        }
+      } else {
+        // Continuar activa por otro ciclo
+        state.cycleStart = now;
+        state.nextActionAt = now + state.cycleDuration;
+
+        await saveModerationState(guildId, state);
+
+        if (targetChannel) {
+          const { EmbedBuilder } = await import('discord.js');
+          const embed = new EmbedBuilder()
+            .setTitle('🛡️ Auto-Moderación Prolongada')
+            .setColor(0xE74C3C)
+            .setDescription(`Se detectaron infracciones en el ciclo anterior.\n\nLa moderación automática continuará **Activa** por otras **${Math.round(state.cycleDuration / (60 * 60 * 1000))} horas** para proteger el servidor. ⚔️`)
+            .setTimestamp();
+          await targetChannel.send({ embeds: [embed] }).catch(() => {});
+        }
+      }
+    } else if (state.status === 'resting' && now >= state.nextActionAt) {
+      // Reposo finalizado, volver a activar
+      state.status = 'active';
+      state.cycleStart = now;
+      state.nextActionAt = now + state.cycleDuration;
+
+      await saveModerationState(guildId, state);
+
+      const guild = client.guilds.cache.get(guildId);
+      const targetChannel = guild?.channels.cache.get(state.channelId) || 
+                            guild?.channels.cache.find(c => c.isTextBased() && (c.name.includes('avisos') || c.name.includes('anuncios') || c.name.includes('pruebas')));
+
+      if (targetChannel) {
+        const { EmbedBuilder } = await import('discord.js');
+        const embed = new EmbedBuilder()
+          .setTitle('🛡️ Auto-Moderación Reactivada')
+          .setColor(0x2ECC71)
+          .setDescription(`El periodo de reposo de 10 horas ha finalizado.\n\nLa moderación automática vuelve a estar **Activa** por las próximas **${Math.round(state.cycleDuration / (60 * 60 * 1000))} horas**. ⚔️`)
+          .setTimestamp();
+        await targetChannel.send({ embeds: [embed] }).catch(() => {});
+      }
+    }
+  }
+}
+
+async function saveModerationState(guildId, state) {
+  if (!db) return;
+  try {
+    await db.collection('guilds').doc(guildId).collection('stats').doc('moderation').set({
+      ...state,
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+  } catch (err) {
+    console.error('[moderation-timer] Error guardando estado:', err.message);
   }
 }
 

@@ -9,10 +9,30 @@ export async function handleModerationCommand(interaction) {
   }
 
   try {
-    await setModerationActive(guildId, activar);
+    let durationMs = 0;
+    let replyMsg = '';
+
+    if (activar) {
+      const horas = interaction.options.getInteger('horas');
+      const dias = interaction.options.getInteger('dias');
+
+      if (horas || dias) {
+        durationMs = ((horas || 0) * 60 * 60 * 1000) + ((dias || 0) * 24 * 60 * 60 * 1000);
+        const totalHoras = durationMs / (60 * 60 * 1000);
+        replyMsg = `La automoderación ha sido **activada** de forma temporal por **${totalHoras} horas** en todos los canales. 🛡️\n*(Descansará 10 horas si no hay infracciones al finalizar el ciclo)*`;
+      } else {
+        // Por defecto 24 horas si no especifican nada
+        durationMs = 24 * 60 * 60 * 1000;
+        replyMsg = `La automoderación ha sido **activada** por defecto durante **24 horas** en todos los canales. 🛡️\n*(Descansará 10 horas si no hay infracciones al finalizar el ciclo)*`;
+      }
+    } else {
+      replyMsg = 'La automoderación ha sido **desactivada** en este servidor.';
+    }
+
+    await setModerationActive(guildId, activar, durationMs, interaction.channelId, interaction.user.id);
     return interaction.reply({
-      content: `La automoderación ha sido **${activar ? 'activada' : 'desactivada'}** en este servidor.`,
-      ephemeral: true
+      content: replyMsg,
+      ephemeral: false // Dejarlo visible para que todo el staff y moders vean el anuncio de activación
     });
   } catch (err) {
     console.error('[moderationHandler] Error:', err);

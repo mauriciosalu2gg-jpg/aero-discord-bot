@@ -18,7 +18,7 @@ import { webSearch, needsWebSearch } from './core/webSearch.js';
 import { computeThinkingDelay, humanizedTyping } from './core/typingDelay.js';
 import { getFlags, matchesStopPhrase, matchesResumePhrase, setFlag, hydrateFlags } from './core/behaviorFlags.js';
 import { markActivity, startIdleWatcher } from './core/idleFacts.js';
-import { looksSuspicious, analyzeWithAI, getUserPoints, addPoints, getPointsForRule, determineAction, logModeration, isModerationActive, hydrateModerationFlags } from './core/moderation/index.js';
+import { looksSuspicious, analyzeWithAI, getUserPoints, addPoints, getPointsForRule, determineAction, logModeration, isModerationActive, hydrateModerationFlags, processTimedModeration } from './core/moderation/index.js';
 import { handleInteraction } from './interactions/interactionCreate.js';
 import { isPendingFunadorAnswer } from './core/funadorSession.js';
 import { handleApiKeyQuestion } from './commands/apikey.js';
@@ -126,6 +126,11 @@ client.once('ready', async () => {
   // cada reinicio/redeploy de Render.
   await hydrateFlags().catch(err => console.error('[hydrate/flags]', err.message));
   await hydrateModerationFlags().catch(err => console.error('[hydrate/moderation]', err.message));
+
+  // Iniciar ciclo de comprobación de moderación temporal cada 30 segundos
+  setInterval(() => {
+    processTimedModeration(client).catch(err => console.error('[moderation-timer] Error en el ciclo:', err.message));
+  }, 30000);
 
   // Watcher de inactividad: si un canal lleva 6+ horas sin actividad y no
   // esta "calladito", el bot tira un dato curioso por su cuenta.
