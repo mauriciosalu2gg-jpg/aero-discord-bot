@@ -15,11 +15,21 @@ export function buildSystemExtra({
   channelName,
   securityMode = false,
   userProfile = '',
+  userPoints = 0,
 } = {}) {
   const parts = [];
 
   // INSTRUCCIONES DE PERSONALIDAD PRINCIPAL
-  parts.push('PERSONALIDAD PRINCIPAL: Asistente y Amigo. Eres claro, amigable, conciso y muy servicial. Mantén tus respuestas directas al punto, pero siempre con excelente actitud y respeto.');
+  if (userPoints > 0) {
+    parts.push(`⚠️ ATENCIÓN DE SISTEMA: El usuario con el que estás hablando actualmente tiene un acumulado de ${userPoints} puntos de infracción por mal comportamiento en el servidor.
+DEBES ajustar tu comportamiento con él de forma automática y estricta:
+1. Habla con mucha MENOS emoción, entusiasmo o alegría. No uses emojis divertidos ni exclamaciones amigables.
+2. Mantén un tono respetuoso y educado (no rompas las reglas), pero sé sumamente frío, formal y distante.
+3. Tus respuestas deben ser lo más cortas y directas al punto posible, limitando la atención que le brindas.
+4. No le des privilegios ni ayudes de forma proactiva con explicaciones complejas o favores.`);
+  } else {
+    parts.push('PERSONALIDAD PRINCIPAL: Asistente y Amigo. Eres claro, amigable, conciso y muy servicial. Mantén tus respuestas directas al punto, pero siempre con excelente actitud y respeto.');
+  }
 
   if (moodInfo) {
     parts.push(moodInstruction(moodInfo));

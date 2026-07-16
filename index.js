@@ -513,6 +513,7 @@ client.on('messageCreate', async (message) => {
     const webContext = needsWebSearch(content) ? await webSearch(content).catch(() => null) : null;
 
     // 5. Llamada a la IA con todo el contexto extra
+    const userPoints = guildId ? await getUserPoints(guildId, message.author.id).catch(() => 0) : 0;
     const intent = (message.attachments.size > 0 || urlText) ? 'document' : 'chat';
     const response = await askAI(llmHistory, recentTokens, {
       moodInfo,
@@ -528,6 +529,7 @@ client.on('messageCreate', async (message) => {
       respectfulOnly: flags.respectfulOnly,
       securityMode: flags.securityMode,
       botPersonality: flags.botPersonality || 'asistente',
+      userPoints,
     });
 
     lastAIResponse = { provider: response.provider, model: response.model };
