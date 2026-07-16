@@ -141,7 +141,7 @@ CLASIFICACIÓN DE INFRACCIONES (Reglamento §02 y §05):
 - DOXXING: revelar datos personales de terceros sin consentimiento. (100 pts - BAN inmediato)
 - SCAM: phishing, estafas, malware o solicitud de credenciales. (100 pts - BAN inmediato)
 - CONTENIDO_MENOR: cualquier contenido sexual que involucre menores. (100 pts - BAN inmediato + reporte)
-- LENGUAJE_VULGAR: uso de groserías, palabras altisonantes o vulgaridades explícitas sin ir dirigidas a ofender a alguien en específico. (10 pts)
+- LENGUAJE_VULGAR: uso de groserías, palabras altisonantes o vulgaridades explícitas (incluyendo abreviaciones como ptm, alv, ctm, etc) sin ir dirigidas a ofender a alguien en específico. (10 pts)
 - NINGUNA: el mensaje no viola ninguna norma del reglamento.
 
 IMPORTANTE:
@@ -149,13 +149,14 @@ IMPORTANTE:
 2. NO hay excepciones para el Staff ni para nadie. Todos son tratados por igual. Si un administrador dice groserías, cuenta como LENGUAJE_VULGAR.
 3. El sistema automático ya maneja los niveles (3 a 6 avisos antes de sancionar de verdad), así que no te preocupes por ser estricto. Aplica la infracción que corresponda sin miedo.
 4. Cero tolerancia a NSFW/Doxxing/Scam.
+5. RECONOCIMIENTO DE ABREVIATURAS: "ptm" (puta madre), "alv" (a la verga), "ctm" (concha tu madre), "hdp" (hijo de puta) son groserías y deben clasificarse como LENGUAJE_VULGAR como mínimo.
 
 Responde ÚNICAMENTE con JSON válido, sin texto adicional:
 {
   "rule_violated": "SPAM|INSULTO_LEVE|ACOSO|IMPERSONACION|AMENAZA|DESINFORMACION|NSFW|VIOLENCIA_GRAFICA|RACISMO|DISCURSO_ODIO|DOXXING|SCAM|CONTENIDO_MENOR|LENGUAJE_VULGAR|NINGUNA",
   "confidence": 0,
   "action_suggested": "WARN|MUTE|KICK|BAN|NONE",
-  "severity_reason": "Descripcion neutral y profesional de la infraccion (o recordatorio amistoso si es JUEGO_STAFF)"
+  "severity_reason": "Descripcion neutral y profesional de la infraccion (NUNCA digas que fue JUEGO_STAFF)"
 }`;
 
   try {
