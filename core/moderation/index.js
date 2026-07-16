@@ -173,34 +173,6 @@ Responde ÚNICAMENTE con JSON válido, sin texto adicional:
       jsonStr = jsonStr.replace(/^\`\`\`json/, '').replace(/\`\`\`$/, '');
     }
     
-    // Mensaje de notificacion formal acorde al Reglamento Oficial §04
-    const formatNotice = (action, reason, pts) => {
-      const levels = [
-        { threshold: 100, label: 'Baneo permanente', emoji: '🔨' },
-        { threshold: 70,  label: 'Expulsión',         emoji: '👢' },
-        { threshold: 40,  label: 'Silencio temporal', emoji: '🔇' },
-        { threshold: 20,  label: 'Advertencia',       emoji: '⚠️' },
-      ];
-      const next = levels.find(l => pts < l.threshold);
-      const nextWarn = next ? `\n> **Próximo umbral:** ${next.label} a partir de ${next.threshold} puntos.` : '';
-      return [
-        `## Mensaje eliminado — Infracción al Reglamento`,
-        `**Usuario:** <@${message.author.id}>`,
-        `**Motivo:** ${reason}`,
-        `**Puntos acumulados:** \`${pts}/100\`${nextWarn}`,
-        `\n-# Los puntos expiran automáticamente 20 pts por cada 30 días sin infracciones. Revisa el reglamento completo en el canal de reglas.`
-      ].join('\n');
-    };
-
-    switch(action) {
-      case 'WARN':
-        await message.channel.send({
-          content: formatNotice('WARN', aiResult.severity_reason, totalPoints),
-          allowedMentions: { users: [message.author.id] }
-        });
-        break;
-    }
-    
     const result = JSON.parse(jsonStr);
     
     console.log(`[metrics] Moderacion IA | Prov: ${response.provider} | Modelo: ${response.model} | Ms: ${latency} | Tokens: ${response.tokens}`);

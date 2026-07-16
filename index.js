@@ -261,6 +261,25 @@ async function runAutoModeration(message) {
   }
 
   try {
+    // Mensaje de notificacion formal acorde al Reglamento Oficial §04
+    const formatNotice = (actionType, reason, pts, authorId) => {
+      const levels = [
+        { threshold: 100, label: 'Baneo permanente', emoji: '🔨' },
+        { threshold: 70,  label: 'Expulsión',         emoji: '👢' },
+        { threshold: 40,  label: 'Silencio temporal', emoji: '🔇' },
+        { threshold: 20,  label: 'Advertencia',       emoji: '⚠️' },
+      ];
+      const next = levels.find(l => pts < l.threshold);
+      const nextWarn = next ? `\n> **Próximo umbral:** ${next.label} a partir de ${next.threshold} puntos.` : '';
+      return [
+        `## ⚠️ Mensaje eliminado — Infracción al Reglamento`,
+        `**Usuario:** <@${authorId}>`,
+        `**Motivo:** ${reason}`,
+        `**Puntos acumulados:** \`${pts}/100\`${nextWarn}`,
+        `\n-# Los puntos expiran automáticamente 20 pts por cada 30 días sin infracciones. Revisa el reglamento completo en el canal de reglas.`
+      ].join('\n');
+    };
+
     switch(action) {
       case 'WARN':
         if (aiResult.rule_violated === 'JUEGO_STAFF') {
@@ -270,7 +289,7 @@ async function runAutoModeration(message) {
           });
         } else {
           await message.channel.send({
-            content: `⚠️ <@${message.author.id}> tu mensaje fue eliminado.\n**Motivo:** ${aiResult.severity_reason}\n**Puntos acumulados:** ${totalPoints}/100 — Acumular más puede resultar en silencio, expulsión o baneo.`,
+            content: formatNotice('WARN', aiResult.severity_reason, totalPoints, message.author.id),
             allowedMentions: { users: [message.author.id] }
           });
         }
