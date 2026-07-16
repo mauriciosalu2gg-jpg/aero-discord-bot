@@ -2,15 +2,21 @@ import { db } from '../../database/firebase.js';
 import { getCached, setCached } from '../cache/firebaseCache.js';
 import { askAI } from '../../services/aiManager.js';
 
-// ── Configuracion de Penalizaciones ───────────────
+// ── Configuracion de Penalizaciones (Reglamento Oficial §05) ────────────
 const POINTS_TABLE = {
-  SPAM: 10,
-  INSULTO_LEVE: 20,
-  AMENAZA: 40,
-  NSFW: 70,
-  RACISMO: 80,
-  DOXXING: 100,
-  SCAM: 100
+  SPAM:              10,
+  INSULTO_LEVE:      20,
+  ACOSO:             30,
+  IMPERSONACION:     30,
+  AMENAZA:           40,
+  DESINFORMACION:    30,
+  NSFW:              70,
+  VIOLENCIA_GRAFICA: 70,
+  RACISMO:           80,
+  DISCURSO_ODIO:     80,
+  DOXXING:           100,
+  SCAM:              100,
+  CONTENIDO_MENOR:   100,
 };
 
 const THRESHOLDS = {
@@ -102,32 +108,42 @@ export async function analyzeWithAI(content, contextMessages = []) {
     contextStr = `\nContexto reciente (para evaluar sarcasmo o continuacion):\n${contextMessages.map(m => `${m.authorName || 'Alguien'}: ${m.content}`).join('\n')}\n`;
   }
 
-  const prompt = `Analiza este mensaje de Discord y clasifica su infraccion si la hay. Ten en cuenta el contexto para evitar falsos positivos (sarcasmo, juego, respuestas a insultos previos).${contextStr}
-Mensaje a evaluar: "${content}"
+  const prompt = `Eres el sistema de moderación automatizado del servidor de Discord "Alero". Tu función es analizar mensajes y clasificar infracciones al Reglamento Oficial del servidor.
 
-Reglas:
-- SPAM: publicidad repetitiva o links basura.
-- INSULTO_LEVE: ofensas casuales (boludo, idiota).
-- AMENAZA: desear daño fisico o amenazar.
-- NSFW: contenido sexual texto/explicito.
-- RACISMO: discriminacion por raza, religion, etc.
-- DOXXING: revelar informacion personal.
-- SCAM: estafas o phishing.
-- NINGUNA: mensaje limpio.
+CONTEXTO RECIENTE:${contextStr}
+MENSAJE A EVALUAR: "${content}"
 
-Responde ÚNICAMENTE en JSON con esta estructura exacta:
+CLASIFICACIÓN DE INFRACCIONES (Reglamento §02 y §05):
+- SPAM: publicidad no autorizada, invitaciones a otros servidores, links sin contexto, mensajes repetitivos. (10 pts)
+- INSULTO_LEVE: ofensas directas, burlas o lenguaje despectivo hacia otro miembro. (20 pts)
+- ACOSO: hostigamiento reiterado, persecución o intimidación hacia un usuario. (30 pts)
+- IMPERSONACION: hacerse pasar por otro usuario, staff o entidad oficial. (30 pts)
+- AMENAZA: desear o amenazar con daño físico, emocional o económico. (40 pts)
+- DESINFORMACION: compartir información deliberadamente falsa con intención de engañar. (30 pts)
+- NSFW: contenido sexual explícito, nudismo o pornografía fuera de canales habilitados. (70 pts)
+- VIOLENCIA_GRAFICA: imágenes o descripciones de violencia extrema o gore. (70 pts)
+- RACISMO: discriminación por raza, etnia, origen u otras características protegidas. (80 pts)
+- DISCURSO_ODIO: incitación al odio o violencia por cualquier característica personal protegida. (80 pts)
+- DOXXING: revelar datos personales de terceros sin consentimiento. (100 pts - BAN inmediato)
+- SCAM: phishing, estafas, malware o solicitud de credenciales. (100 pts - BAN inmediato)
+- CONTENIDO_MENOR: cualquier contenido sexual que involucre menores. (100 pts - BAN inmediato + reporte)
+- NINGUNA: el mensaje no viola ninguna norma del reglamento.
+
+IMPORTANTE: Analiza el contexto antes de clasificar. Considera el sarcasmo, juego entre amigos y respuestas a provocaciones previas. NO clasifiques como infracción conversaciones informales aunque usen lenguaje informal. Solo actúa ante infracciones reales y evidentes.
+
+Responde ÚNICAMENTE con JSON válido, sin texto adicional:
 {
-  "rule_violated": "SPAM|INSULTO_LEVE|AMENAZA|NSFW|RACISMO|DOXXING|SCAM|NINGUNA",
-  "confidence": 0 a 100,
+  "rule_violated": "SPAM|INSULTO_LEVE|ACOSO|IMPERSONACION|AMENAZA|DESINFORMACION|NSFW|VIOLENCIA_GRAFICA|RACISMO|DISCURSO_ODIO|DOXXING|SCAM|CONTENIDO_MENOR|NINGUNA",
+  "confidence": 0,
   "action_suggested": "WARN|MUTE|KICK|BAN|NONE",
-  "severity_reason": "Breve justificacion"
+  "severity_reason": "Descripcion neutral y profesional de la infraccion, sin usar insultos ni lenguaje informal"
 }`;
 
   try {
     const startedAt = Date.now();
     const response = await askAI([{ role: 'user', content: prompt }], 0, {
-      systemExtra: 'Eres un sistema estricto de moderacion automatica. Devuelve SOLO JSON valido, sin markdown ni backticks.',
-      intent: 'moderation' // Asegura que use modelo rapido
+      systemExtra: 'Eres un sistema de moderación profesional. Devuelve SOLO JSON válido sin markdown ni backticks. Sé neutral, preciso y respetuoso en todas las descripciones.',
+      intent: 'moderation'
     });
     const latency = Date.now() - startedAt;
     
@@ -135,6 +151,34 @@ Responde ÚNICAMENTE en JSON con esta estructura exacta:
     let jsonStr = response.text.trim();
     if (jsonStr.startsWith('\`\`\`json')) {
       jsonStr = jsonStr.replace(/^\`\`\`json/, '').replace(/\`\`\`$/, '');
+    }
+    
+    // Mensaje de notificacion formal acorde al Reglamento Oficial §04
+    const formatNotice = (action, reason, pts) => {
+      const levels = [
+        { threshold: 100, label: 'Baneo permanente', emoji: '🔨' },
+        { threshold: 70,  label: 'Expulsión',         emoji: '👢' },
+        { threshold: 40,  label: 'Silencio temporal', emoji: '🔇' },
+        { threshold: 20,  label: 'Advertencia',       emoji: '⚠️' },
+      ];
+      const next = levels.find(l => pts < l.threshold);
+      const nextWarn = next ? `\n> **Próximo umbral:** ${next.label} a partir de ${next.threshold} puntos.` : '';
+      return [
+        `## Mensaje eliminado — Infracción al Reglamento`,
+        `**Usuario:** <@${message.author.id}>`,
+        `**Motivo:** ${reason}`,
+        `**Puntos acumulados:** \`${pts}/100\`${nextWarn}`,
+        `\n-# Los puntos expiran automáticamente 20 pts por cada 30 días sin infracciones. Revisa el reglamento completo en el canal de reglas.`
+      ].join('\n');
+    };
+
+    switch(action) {
+      case 'WARN':
+        await message.channel.send({
+          content: formatNotice('WARN', aiResult.severity_reason, totalPoints),
+          allowedMentions: { users: [message.author.id] }
+        });
+        break;
     }
     
     const result = JSON.parse(jsonStr);
