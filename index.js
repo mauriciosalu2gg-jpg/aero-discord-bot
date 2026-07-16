@@ -257,62 +257,86 @@ async function runAutoModeration(message) {
 
   try {
     // Mensaje de notificacion formal acorde al Reglamento Oficial §04
-    const formatNotice = (actionType, reason, pts, authorId) => {
+    const { EmbedBuilder } = require('discord.js');
+    const formatEmbed = (actionType, reason, pts, authorId, rule) => {
       const levels = [
-        { threshold: 100, label: 'Baneo permanente', emoji: '🔨' },
-        { threshold: 70,  label: 'Expulsión',         emoji: '👢' },
-        { threshold: 40,  label: 'Silencio temporal', emoji: '🔇' },
-        { threshold: 20,  label: 'Advertencia',       emoji: '⚠️' },
+        { threshold: 100, label: 'Baneo permanente', color: 0xFF0000 },
+        { threshold: 70,  label: 'Expulsión',         color: 0xFF5500 },
+        { threshold: 40,  label: 'Silencio temporal', color: 0xFFAA00 },
+        { threshold: 20,  label: 'Advertencia',       color: 0xFFFF00 },
+        { threshold: 0,   label: 'Aviso Menor',       color: 0xAAAAAA },
       ];
-      const next = levels.find(l => pts < l.threshold);
-      const nextWarn = next ? `\n> **Próximo umbral:** ${next.label} a partir de ${next.threshold} puntos.` : '';
-      return [
-        `## ⚠️ Mensaje eliminado — Infracción al Reglamento`,
-        `**Usuario:** <@${authorId}>`,
-        `**Motivo:** ${reason}`,
-        `**Puntos acumulados:** \`${pts}/100\`${nextWarn}`,
-        `\n-# Los puntos expiran automáticamente 20 pts por cada 30 días sin infracciones. Revisa el reglamento completo en el canal de reglas.`
-      ].join('\n');
+      
+      const currentLevel = levels.find(l => pts >= l.threshold) || levels[4];
+      const nextLevel = levels.slice().reverse().find(l => pts < l.threshold);
+      
+      let title = '⚠️ Advertencia de Moderación';
+      if (actionType === 'MUTE') title = '🔇 Silencio Temporal Aplicado';
+      if (actionType === 'KICK') title = '👢 Expulsión Aplicada';
+      if (actionType === 'BAN') title = '🔨 Baneo Permanente Aplicado';
+
+      const embed = new EmbedBuilder()
+        .setTitle(title)
+        .setColor(currentLevel.color)
+        .setDescription(`El sistema automatizado ha detectado una infracción al reglamento.\n\n**Usuario:** <@${authorId}>\n**Infracción:** \`${rule}\`\n**Motivo Detallado:** ${reason}`)
+        .addFields({ name: 'Puntos de Infracción', value: `\`${pts}/100\``, inline: true });
+        
+      if (nextLevel) {
+        embed.addFields({ name: 'Próximo Umbral', value: `${nextLevel.label} a los ${nextLevel.threshold} pts`, inline: true });
+      }
+
+      embed.setFooter({ text: 'Los puntos expiran 20 pts por cada 30 días sin infracciones. Sistema de IA.' });
+      return embed;
     };
 
     switch(action) {
       case 'WARN':
         await message.channel.send({
-          content: formatNotice('WARN', aiResult.severity_reason, totalPoints, message.author.id),
+          content: `<@${message.author.id}>`,
+          embeds: [formatEmbed('WARN', aiResult.severity_reason, totalPoints, message.author.id, aiResult.rule_violated)],
           allowedMentions: { users: [message.author.id] }
         });
         break;
       case 'MUTE':
-        if (member && (botHasAdmin || member.moderatable)) {
+        if (member && member.moderatable) {
           await member.timeout(10 * 60 * 1000, `AutoMod: ${aiResult.rule_violated}`);
           await message.channel.send({
-            content: `🔇 <@${message.author.id}> muteado por 10m. Motivo: ${aiResult.severity_reason}`,
+            content: `<@${message.author.id}>`,
+            embeds: [formatEmbed('MUTE', aiResult.severity_reason, totalPoints, message.author.id, aiResult.rule_violated)],
             allowedMentions: { users: [message.author.id] }
           });
         } else {
-          await message.channel.send(`⚠️ No puedo mutear a <@${message.author.id}> (faltan permisos).`);
+          await message.channel.send({
+            content: `⚠️ <@${message.author.id}> el sistema intentó **Mutearte** por acumulación de puntos, pero tu rol actual impide la sanción automática.\n> **Infracción:** ${aiResult.severity_reason}`
+          });
         }
         break;
       case 'KICK':
-        if (member && (botHasAdmin || member.kickable)) {
+        if (member && member.kickable) {
           await member.kick(`AutoMod: ${aiResult.rule_violated}`);
           await message.channel.send({
-            content: `👢 <@${message.author.id}> fue expulsado. Motivo: ${aiResult.severity_reason}`,
+            content: `<@${message.author.id}>`,
+            embeds: [formatEmbed('KICK', aiResult.severity_reason, totalPoints, message.author.id, aiResult.rule_violated)],
             allowedMentions: { users: [message.author.id] }
           });
         } else {
-          await message.channel.send(`⚠️ No puedo expulsar a <@${message.author.id}> (faltan permisos).`);
+          await message.channel.send({
+            content: `⚠️ <@${message.author.id}> el sistema intentó **Expulsarte** por acumulación de puntos, pero tu rol actual impide la sanción automática.\n> **Infracción:** ${aiResult.severity_reason}`
+          });
         }
         break;
       case 'BAN':
-        if (member && (botHasAdmin || member.bannable)) {
+        if (member && member.bannable) {
           await member.ban({ reason: `AutoMod: ${aiResult.rule_violated}` });
           await message.channel.send({
-            content: `🔨 <@${message.author.id}> fue baneado. Motivo: ${aiResult.severity_reason}`,
+            content: `<@${message.author.id}>`,
+            embeds: [formatEmbed('BAN', aiResult.severity_reason, totalPoints, message.author.id, aiResult.rule_violated)],
             allowedMentions: { users: [message.author.id] }
           });
         } else {
-          await message.channel.send(`⚠️ No puedo banear a <@${message.author.id}> (faltan permisos).`);
+          await message.channel.send({
+            content: `⚠️ <@${message.author.id}> el sistema intentó **Banearte** permanentemente, pero tu rol actual impide la sanción automática.\n> **Infracción:** ${aiResult.severity_reason}`
+          });
         }
         break;
     }
