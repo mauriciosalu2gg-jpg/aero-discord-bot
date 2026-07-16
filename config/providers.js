@@ -130,7 +130,9 @@ export const REPETITION_CONTROLS = {
   openrouter: { frequency_penalty: 0.3 },
 };
 
-export function getMaxTokens(providerName) {
+export function getMaxTokens(providerName, intent = 'chat') {
+  if (intent === 'document') return 1500;
+  if (intent === 'moderation') return 150;
   return MAX_TOKENS[providerName] ?? MAX_TOKENS.default;
 }
 

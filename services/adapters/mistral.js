@@ -8,7 +8,7 @@ import { getMaxTokens, getRepetitionControls } from '../../config/providers.js';
 
 const MISTRAL_ENDPOINT = 'https://api.mistral.ai/v1/chat/completions';
 
-export async function callMistral(apiKey, model, history, systemExtra = '') {
+export async function callMistral(apiKey, model, history, systemExtra = '', intent = 'chat') {
   if (!apiKey) throw new Error('Mistral: sin API Key');
   const system = systemExtra ? `${SYSTEM_PROMPT}\n\n${systemExtra}` : SYSTEM_PROMPT;
 
@@ -17,7 +17,7 @@ export async function callMistral(apiKey, model, history, systemExtra = '') {
     apiKey,
     model,
     messages: [{ role: 'system', content: system }, ...history],
-    maxTokens: getMaxTokens('mistral'),
+    maxTokens: getMaxTokens('mistral', intent),
     extraBody: getRepetitionControls('mistral'),
   });
 

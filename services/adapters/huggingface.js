@@ -7,7 +7,7 @@ import { getMaxTokens, getRepetitionControls } from '../../config/providers.js';
 
 const HUGGINGFACE_ENDPOINT = 'https://router.huggingface.co/v1/chat/completions';
 
-export async function callHuggingFace(apiKey, model, history, systemExtra = '') {
+export async function callHuggingFace(apiKey, model, history, systemExtra = '', intent = 'chat') {
   if (!apiKey) throw new Error('HuggingFace: sin API Key');
   const system = systemExtra ? `${SYSTEM_PROMPT}\n\n${systemExtra}` : SYSTEM_PROMPT;
 
@@ -16,7 +16,7 @@ export async function callHuggingFace(apiKey, model, history, systemExtra = '') 
     apiKey,
     model,
     messages: [{ role: 'system', content: system }, ...history],
-    maxTokens: getMaxTokens('huggingface'),
+    maxTokens: getMaxTokens('huggingface', intent),
     extraBody: getRepetitionControls('huggingface'),
   });
 

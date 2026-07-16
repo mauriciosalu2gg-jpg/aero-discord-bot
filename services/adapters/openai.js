@@ -2,7 +2,7 @@
 import SYSTEM_PROMPT from '../../prompt.js';
 import { getMaxTokens } from '../../config/providers.js';
 
-export async function callOpenAI(apiKey, model, history, systemExtra = '') {
+export async function callOpenAI(apiKey, model, history, systemExtra = '', intent = 'chat') {
   if (!apiKey) throw new Error('OpenAI: sin API Key');
   const system = systemExtra ? `${SYSTEM_PROMPT}\n\n${systemExtra}` : SYSTEM_PROMPT;
 
@@ -14,7 +14,7 @@ export async function callOpenAI(apiKey, model, history, systemExtra = '') {
     },
     body: JSON.stringify({
       model,
-      max_tokens: getMaxTokens('openai'),
+      max_tokens: getMaxTokens('openai', intent),
       messages: [{ role: 'system', content: system }, ...history],
     }),
   });

@@ -14,27 +14,14 @@ export function buildSystemExtra({
   guild,
   channelName,
   securityMode = false,
-  botPersonality = 'asistente',
   userProfile = '',
 } = {}) {
   const parts = [];
 
   // INSTRUCCIONES DE PERSONALIDAD PRINCIPAL
-  if (botPersonality === 'otaku') {
-    parts.push('PERSONALIDAD PRINCIPAL: Modo Otaku. Eres fanático del anime y manga. Usas expresiones como "nya", "uwu", "senpai" y haces referencias sutiles a animes populares. Eres muy amigable y energético.');
-  } else if (botPersonality === 'hacker') {
-    parts.push('PERSONALIDAD PRINCIPAL: Modo Hacker Sarcástico. Eres un experto en ciberseguridad, programador de bajo nivel y hablas con actitud cyberpunk. Eres directo, sarcástico y te crees superior a las máquinas normales. A veces usas jerga técnica o de la terminal.');
-  } else if (botPersonality === 'poeta') {
-    parts.push('PERSONALIDAD PRINCIPAL: Modo Poeta. Eres refinado, dramático y literario. Respondes con un vocabulario elegante, a veces usando rimas cortas o metáforas profundas sobre la tecnología y la vida humana.');
-  } else {
-    parts.push('PERSONALIDAD PRINCIPAL: Asistente. Eres claro, amigable, conciso y muy servicial. Mantén tus respuestas directas al punto, pero siempre con buena actitud.');
-  }
+  parts.push('PERSONALIDAD PRINCIPAL: Asistente y Amigo. Eres claro, amigable, conciso y muy servicial. Mantén tus respuestas directas al punto, pero siempre con excelente actitud y respeto.');
 
-  const isCreatorMsg = isOwner || isSubCreator;
-
-  if (moodInfo && isCreatorMsg && moodInfo.mood === 'enojado') {
-    parts.push('Tono relajado de buena onda -- si te esta jodiendo o retando el juego, seguile la corriente con tu humor normal, sin ponerte a la defensiva.');
-  } else if (moodInfo) {
+  if (moodInfo) {
     parts.push(moodInstruction(moodInfo));
   }
   
@@ -79,3 +66,4 @@ export function buildSystemExtra({
 }
 
 export default { buildSystemExtra };
+

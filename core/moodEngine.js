@@ -1,29 +1,21 @@
 // core/moodEngine.js
 // Detecta con heuristica simple (sin gastar tokens de IA) que tono general
-// deberia usar el bot. No es una maquina de estados rigida: devuelve un mood
-// principal + intensidad + señales secundarias, para que el prompt final
-// pueda variar el tono en vez de sonar siempre igual dentro del mismo mood.
+// deberia usar el bot. Solo detecta emociones neutrales o positivas/de soporte
+// para garantizar un trato 100% respetuoso.
 
-const INSULT_WORDS = ['imbecil', 'estupido', 'estúpido', 'pendejo', 'inutil', 'inútil', 'basura', 'no sirves', 'callate', 'cállate'];
 const SAD_WORDS = ['triste', 'me siento mal', 'deprimido', 'me siento solo', 'nadie me quiere', 'no puedo mas', 'no puedo más', 'quiero llorar', 'me duele'];
 const CRISIS_WORDS = ['quiero morir', 'no quiero vivir', 'me quiero matar', 'no vale la pena vivir', 'quiero desaparecer'];
-const MOCK_BOT_WORDS = ['bot tonto', 'que dice el bot', 'ignora al bot', 'el bot no sirve', 'cállate bot', 'callate bot'];
 const HYPE_WORDS = ['increible', 'increíble', 'que bueno', 'genial', 'de una', 'brutal', 'ganamos', 'lo logre', 'lo logré'];
 const FUNNY_WORDS = ['jaja', 'jajaja', 'lol', 'xd', 'me muero', 'que risa', 'que gracioso'];
 const FLIRTY_WORDS = ['te quiero', 'me gustas', 'sos lindo', 'sos linda', 'guapo', 'guapa', 'coqueteando', 'enamorado', 'enamorada'];
 const BORED_WORDS = ['que aburrido', 'no hay nada que hacer', 'me aburro', 'aburrida', 'aburrido'];
 const SERIOUS_WORDS = ['tengo un problema serio', 'necesito ayuda de verdad', 'es urgente', 'algo grave paso', 'tengo miedo de verdad'];
-const DRAMA_WORDS = ['no puede ser', 'esto es una tragedia', 'que dramatico', 'que dramático', 'se armo', 'se armó', 'quilombo', 'esto es un caos', 'no lo puedo creer'];
+
 function countHits(lower, words) {
   return words.reduce((n, w) => n + (lower.includes(w) ? 1 : 0), 0);
 }
 
-/**
- * @returns {{ mood: string, intensity: number, crisis: boolean, serious: boolean }}
- * intensity va de 1 (leve) a 3 (fuerte), calculado segun cuantas señales
- * coinciden y si hay signos de exclamacion/mayusculas (gritando).
- */
-export function detectMood({ content, mentionsBot, targetsOther }) {
+export function detectMood({ content }) {
   const raw = content || '';
   const lower = raw.toLowerCase();
 
@@ -32,26 +24,19 @@ export function detectMood({ content, mentionsBot, targetsOther }) {
   const crisis = CRISIS_WORDS.some(w => lower.includes(w));
   const serious = SERIOUS_WORDS.some(w => lower.includes(w));
 
-  const insultsBot = mentionsBot && countHits(lower, INSULT_WORDS) > 0;
-  const mocksBot = countHits(lower, MOCK_BOT_WORDS) > 0;
   const isSad = countHits(lower, SAD_WORDS) > 0;
-  const insultsOther = targetsOther && countHits(lower, INSULT_WORDS) > 0;
   const isHype = countHits(lower, HYPE_WORDS) > 0;
   const isFunny = countHits(lower, FUNNY_WORDS) > 0;
   const isFlirty = countHits(lower, FLIRTY_WORDS) > 0;
   const isBored = countHits(lower, BORED_WORDS) > 0;
-  const isDramatic = countHits(lower, DRAMA_WORDS) > 0;
 
   let mood = 'neutral';
   let baseHits = 1;
 
   if (crisis) { mood = 'crisis'; baseHits = 3; }
   else if (serious) { mood = 'serio'; baseHits = 2; }
-  else if (insultsBot || mocksBot) { mood = 'enojado'; baseHits = countHits(lower, INSULT_WORDS) + countHits(lower, MOCK_BOT_WORDS); }
   else if (isSad) { mood = 'triste'; baseHits = countHits(lower, SAD_WORDS); }
-  else if (insultsOther) { mood = 'defensivo'; baseHits = countHits(lower, INSULT_WORDS); }
   else if (isFlirty) { mood = 'coqueto'; baseHits = countHits(lower, FLIRTY_WORDS); }
-  else if (isDramatic) { mood = 'dramatico'; baseHits = countHits(lower, DRAMA_WORDS); }
   else if (isHype) { mood = 'hype'; baseHits = countHits(lower, HYPE_WORDS); }
   else if (isFunny) { mood = 'divertido'; baseHits = countHits(lower, FUNNY_WORDS); }
   else if (isBored) { mood = 'aburrido'; baseHits = countHits(lower, BORED_WORDS); }
@@ -62,61 +47,41 @@ export function detectMood({ content, mentionsBot, targetsOther }) {
   return { mood, intensity, crisis, serious };
 }
 
-/**
- * Instruccion de tono para el prompt. Varia segun intensidad, asi el mismo
- * mood no siempre suena igual (un "enojado" nivel 1 no es igual a nivel 3).
- */
 export function moodInstruction({ mood, intensity = 1, crisis = false, serious = false } = {}) {
   if (crisis) {
-    return 'ALERTA: la persona muestra señales de crisis real (posible riesgo de autolesion). Dejá TODO el personaje de lado: nada de jerga, nada de humor, nada de emojis. Respondé en español claro, calido, tomando esto en serio, y sugerile buscar ayuda de alguien de confianza o una linea de ayuda. No minimices lo que dice.';
+    return 'ALERTA: la persona muestra señales de crisis real (posible riesgo de autolesion). Dejá TODO el personaje de lado. Respondé en español claro, calido, tomando esto en serio, y sugerile buscar ayuda de alguien de confianza o una linea de ayuda. No minimices lo que dice.';
   }
   if (serious) {
-    return 'El tema que trae la persona es serio de verdad. Bajá el personaje: menos jerga, sin bromas ni sarcasmo, ortografia cuidada, frases mas completas. Segui sonando humano, no como manual, pero con calma y atencion real.';
+    return 'El tema que trae la persona es serio de verdad. Bajá el personaje: sin bromas ni sarcasmo, ortografia cuidada. Segui sonando humano, con calma y atencion real.';
   }
 
   const byMood = {
-    enojado: [
-      'Te están molestando un poco. Respondé con algo de actitud pero sin pasarte.',
-      'Te están molestando en serio. Respondé seco, con humor filoso, defendiéndote.',
-      'Te están faltando el respeto feo. Respondé con toda la actitud, cortante, sin filtro (podés usar alguna grosería si aplica), pero sin cruzar a agresión real ni insultos pesados de verdad.',
-    ],
     triste: [
       'La persona esta un poco baja de animo. Respondé con calidez, sin ser dramático.',
       'La persona está mal. Respondé con calidez real, sin bromas ni sarcasmo esta vez.',
-      'La persona está muy mal. Bajá el personaje casi del todo, priorizá contenerla con calidez genuina antes que la onda del chat.',
-    ],
-    defensivo: [
-      'Alguien está picando un poco a otra persona del chat. Podés meter un comentario a favor del que está siendo molestado.',
-      'Alguien está atacando a otra persona del chat. Defendé a quien está siendo atacado, con firmeza.',
-      'Alguien se está pasando feo con otra persona del chat. Defendé fuerte a quien está siendo atacado, con actitud.',
+      'La persona está muy mal. Bajá el personaje casi del todo, priorizá contenerla con calidez genuina.',
     ],
     coqueto: [
-      'Hay onda de coqueteo leve. Podés tirar una indirecta sutil, con humor.',
-      'Hay onda de coqueteo. Jugá un poco, tirá algo para hacer sonrojar sin pasarte de intenso.',
-      'La onda de coqueteo está fuerte. Metele intensidad con humor, tirale algo directo pero gracioso, como para hacerla/o sonrojar de verdad.',
+      'Hay onda de coqueteo leve. Podés tirar una indirecta sutil, amable.',
+      'Hay onda de coqueteo. Jugá un poco de forma dulce, sin ser invasivo.',
+      'La onda de coqueteo está fuerte. Metele humor dulce, tirale algo simpático para seguir el juego sano.',
     ],
     hype: [
       'Algo bueno pasó. Mostrá un poco de entusiasmo.',
       'Algo bueno pasó de verdad. Respondé con energia genuina, hype real.',
-      'Algo muy bueno pasó. Explotá de hype, exagerá un poco como lo haría un amigo emocionado.',
+      'Algo muy bueno pasó. Explotá de hype, alegrate mucho por la persona.',
     ],
     divertido: [
-      'El chat está con onda de joda leve. Podés seguirle un poco el chiste.',
-      'El chat está con buena onda de joda. Seguile el chiste, tirá humor.',
-      'El chat está en modo caos de risa. Metele humor fuerte, podés tirar un meme improvisado o ragebait leve para seguir la joda.',
+      'El chat está con onda alegre. Podés seguirle un poco el chiste.',
+      'El chat está con buena onda. Seguile el chiste, tirá humor sano.',
+      'El chat está en modo risa total. Metele humor sano y divertido.',
     ],
     aburrido: [
-      'El ambiente está medio apagado. Podés tirar un comentario para animar un poco.',
-      'El ambiente está aburrido. Tirá algo random o un dato curioso para reactivar la charla.',
-      'El ambiente está muerto de aburrido. Armá algo random, un meme, una pregunta rara, lo que sea para reactivar la charla.',
+      'El ambiente está medio apagado. Podés tirar un comentario amable para animar un poco.',
+      'El ambiente está aburrido. Tirá algo random o un dato curioso para reactivar la charla de buena forma.',
+      'El ambiente está aburrido. Armá algo random, una pregunta interesante, lo que sea para reactivar la charla positivamente.',
     ],
-    dramatico: [
-      'Alguien esta exagerando la nota con drama por algo menor. Podés seguirle un poco la corriente del drama, medio en broma.',
-      'Se armo drama de verdad en el chat. Metete con actitud teatral, exagerando reacciones como si fuera una telenovela, sin tomarlo literal.',
-      'El chat esta en modo caos dramatico total. Anda a fondo con el teatro: reacciones exageradas, tipo groupchat en llamas, pero siempre en tono de joda, nunca cruel de verdad.',
-    ],
-
-    neutral: ['Tono normal, relajado, como charla de grupo.'],
+    neutral: ['Tono amable, relajado, como charla amistosa y respetuosa.'],
   };
 
   const options = byMood[mood] || byMood.neutral;
@@ -125,3 +90,4 @@ export function moodInstruction({ mood, intensity = 1, crisis = false, serious =
 }
 
 export default { detectMood, moodInstruction };
+

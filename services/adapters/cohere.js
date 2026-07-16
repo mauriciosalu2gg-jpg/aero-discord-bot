@@ -9,7 +9,7 @@ import { getMaxTokens, getRepetitionControls } from '../../config/providers.js';
 
 const COHERE_ENDPOINT = 'https://api.cohere.ai/compatibility/v1/chat/completions';
 
-export async function callCohere(apiKey, model, history, systemExtra = '') {
+export async function callCohere(apiKey, model, history, systemExtra = '', intent = 'chat') {
   if (!apiKey) throw new Error('Cohere: sin API Key');
   const system = systemExtra ? `${SYSTEM_PROMPT}\n\n${systemExtra}` : SYSTEM_PROMPT;
 
@@ -18,7 +18,7 @@ export async function callCohere(apiKey, model, history, systemExtra = '') {
     apiKey,
     model,
     messages: [{ role: 'system', content: system }, ...history],
-    maxTokens: getMaxTokens('cohere'),
+    maxTokens: getMaxTokens('cohere', intent),
     extraBody: getRepetitionControls('cohere'),
   });
 

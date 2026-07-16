@@ -7,7 +7,7 @@ import { getMaxTokens, getRepetitionControls } from '../../config/providers.js';
 
 const CEREBRAS_ENDPOINT = 'https://api.cerebras.ai/v1/chat/completions';
 
-export async function callCerebras(apiKey, model, history, systemExtra = '') {
+export async function callCerebras(apiKey, model, history, systemExtra = '', intent = 'chat') {
   if (!apiKey) throw new Error('Cerebras: sin API Key');
   const system = systemExtra ? `${SYSTEM_PROMPT}\n\n${systemExtra}` : SYSTEM_PROMPT;
 
@@ -16,7 +16,7 @@ export async function callCerebras(apiKey, model, history, systemExtra = '') {
     apiKey,
     model,
     messages: [{ role: 'system', content: system }, ...history],
-    maxTokens: getMaxTokens('cerebras'),
+    maxTokens: getMaxTokens('cerebras', intent),
     extraBody: getRepetitionControls('cerebras'),
   });
 

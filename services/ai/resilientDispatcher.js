@@ -35,7 +35,7 @@ function fmtMs(ms) {
  * @param {string} params.systemExtra
  * @returns {Promise<{text: string, tokens: number, provider: string, model: string, latencyMs: number}>}
  */
-export async function dispatchWithFallback({ providers, history, systemExtra }) {
+export async function dispatchWithFallback({ providers, history, systemExtra, intent = 'chat' }) {
   const attempts = [];
   const byName = new Map(providers.map(p => [p.name, p]));
 
@@ -56,7 +56,7 @@ export async function dispatchWithFallback({ providers, history, systemExtra }) 
     const provider = byName.get(forced);
     const models = provider.models.length ? provider.models : [undefined];
     for (const model of models) {
-      const result = await tryOnce(provider, model, history, systemExtra, attempts);
+      const result = await tryOnce(provider, model, history, systemExtra, intent, attempts);
       if (result) return result;
       const last = attempts[attempts.length - 1];
       if (!last.retryable) break;
@@ -73,7 +73,7 @@ export async function dispatchWithFallback({ providers, history, systemExtra }) 
   if (cached && byName.has(cached.name) && !isOnCooldown(cached.name)) {
     const provider = byName.get(cached.name);
     const model = cached.model || provider.models[0];
-    const result = await tryOnce(provider, model, history, systemExtra, attempts);
+    const result = await tryOnce(provider, model, history, systemExtra, intent, attempts);
     if (result) return result;
     // Si el proveedor cacheado falló, cae al recorrido normal de abajo
     // (que ya lo va a saltar mientras esté en cooldown).
@@ -93,7 +93,7 @@ export async function dispatchWithFallback({ providers, history, systemExtra }) 
     let brokeOutForNonRetryable = false;
 
     for (const model of models) {
-      const result = await tryOnce(provider, model, history, systemExtra, attempts);
+      const result = await tryOnce(provider, model, history, systemExtra, intent, attempts);
       if (result) return result;
 
       const last = attempts[attempts.length - 1];
@@ -114,13 +114,13 @@ export async function dispatchWithFallback({ providers, history, systemExtra }) 
  * Intenta un único (proveedor, modelo). Devuelve el resultado si tiene éxito,
  * o null si falló (y ya quedó registrado en `attempts` + salud/cooldown).
  */
-async function tryOnce(provider, model, history, systemExtra, attempts) {
+async function tryOnce(provider, model, history, systemExtra, intent, attempts) {
   const adapter = getAdapter(provider.name);
   const startedAt = Date.now();
 
   try {
-    console.log(`[AI] Proveedor: ${provider.name} | Modelo: ${model}`);
-    const result = await adapter(provider.apiKey, model, history, systemExtra);
+    console.log(`[AI] Proveedor: ${provider.name} | Modelo: ${model} | Intent: ${intent}`);
+    const result = await adapter(provider.apiKey, model, history, systemExtra, intent);
     const latencyMs = Date.now() - startedAt;
 
     recordSuccess(provider.name, latencyMs);

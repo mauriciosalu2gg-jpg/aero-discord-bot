@@ -402,15 +402,18 @@ client.on('messageCreate', async (message) => {
     const userConfig = await getUserMemoryConfig(message.author.id);
     const memory = await getUserMemory(message.author.id, guildId, userConfig.mode);
     
-    // Procesar archivos adjuntos si los hay
+    // Procesar archivos adjuntos si los hay y extraer enlaces
     let finalContent = content;
+    let urlText = '';
+    const { processAttachments, processUrls } = await import('./services/documentReader.js');
+    
     if (message.attachments.size > 0) {
-      const { processAttachments } = await import('./services/documentReader.js');
       const attachmentText = await processAttachments(message.attachments);
-      if (attachmentText) {
-        finalContent += `\n${attachmentText}`;
-      }
+      if (attachmentText) finalContent += `\n${attachmentText}`;
     }
+
+    urlText = await processUrls(content);
+    if (urlText) finalContent += `\n${urlText}`;
 
     // Anexar facts al summary para mantener compatibilidad rapida con contextAnalyzer
     let summaryForAI = memory.summary || '';
@@ -461,8 +464,10 @@ client.on('messageCreate', async (message) => {
     const webContext = needsWebSearch(content) ? await webSearch(content).catch(() => null) : null;
 
     // 5. Llamada a la IA con todo el contexto extra
+    const intent = (message.attachments.size > 0 || urlText) ? 'document' : 'chat';
     const response = await askAI(llmHistory, recentTokens, {
       moodInfo,
+      intent,
       isOwner: context.isOwnerMessage,
       isSubCreator: isSubCreator(message.author),
       memorySummary: summaryForAI,

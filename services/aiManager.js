@@ -33,7 +33,7 @@ export async function askAI(history, recentTokens = 0, extra = {}) {
   const providerChain = buildProviderChain(panelConfig, recentTokens, extra.intent || 'chat');
 
   try {
-    return await dispatchWithFallback({ providers: providerChain, history, systemExtra });
+    return await dispatchWithFallback({ providers: providerChain, history, systemExtra, intent: extra.intent || 'chat' });
   } catch (cloudErr) {
     console.warn(`[aiManager] Todos los proveedores en la nube fallaron: ${cloudErr.message}`);
   }

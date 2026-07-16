@@ -2,7 +2,7 @@
 import SYSTEM_PROMPT from '../../prompt.js';
 import { getMaxTokens } from '../../config/providers.js';
 
-export async function callAnthropic(apiKey, model, history, systemExtra = '') {
+export async function callAnthropic(apiKey, model, history, systemExtra = '', intent = 'chat') {
   if (!apiKey) throw new Error('Anthropic: sin API Key');
   const system = systemExtra ? `${SYSTEM_PROMPT}\n\n${systemExtra}` : SYSTEM_PROMPT;
 
@@ -13,7 +13,7 @@ export async function callAnthropic(apiKey, model, history, systemExtra = '') {
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
     },
-    body: JSON.stringify({ model, max_tokens: getMaxTokens('anthropic'), system, messages: history }),
+    body: JSON.stringify({ model, max_tokens: getMaxTokens('anthropic', intent), system, messages: history }),
   });
 
   const d = await res.json();
