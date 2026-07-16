@@ -33,7 +33,8 @@ const DECAY_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
 const SUSPICIOUS_WORDS = [
   'bolud', 'pendej', 'idiot', 'imbecil', 'estupid', 'inutil', 'basura', 'mierda',
   'sorete', 'gil', 'put', 'maric', 'hdp', 'malparid', 'desgraciad', 'trol',
-  'pelotud', 'forr', 'nefast', 'matate', 'muerete', 'desaparece'
+  'pelotud', 'forr', 'nefast', 'matate', 'muerete', 'desaparece',
+  'ptm', 'alv', 'ctm', 'cdsm', 'kbro', 'vrga', 'verga', 'mrd', 'mierd', 'mmg', 'hdspm'
 ];
 const SUSPICIOUS_REGEX = new RegExp(`\\b(${SUSPICIOUS_WORDS.join('|')})`, 'i');
 
@@ -90,8 +91,8 @@ const moderationCache = new Map();
 const MODERATION_CACHE_TTL = 10 * 60 * 1000; // 10 min
 
 // ── Moderacion con IA ─────────────────────────────
-export async function analyzeWithAI(content, contextMessages = []) {
-  const hash = crypto.createHash('md5').update(content).digest('hex');
+export async function analyzeWithAI(content, contextMessages = [], isStaff = false) {
+  const hash = crypto.createHash('md5').update(content + isStaff).digest('hex');
   const now = Date.now();
   
   if (moderationCache.has(hash)) {
@@ -108,8 +109,9 @@ export async function analyzeWithAI(content, contextMessages = []) {
     contextStr = `\nContexto reciente (para evaluar sarcasmo o continuacion):\n${contextMessages.map(m => `${m.authorName || 'Alguien'}: ${m.content}`).join('\n')}\n`;
   }
 
-  const prompt = `Eres el sistema de moderación automatizado del servidor de Discord "Alero". Tu función es analizar mensajes y clasificar infracciones al Reglamento Oficial del servidor.
+  const prompt = `Eres el sistema de moderación automatizado del servidor de Discord "Alero" (Novarito). Tu función es analizar mensajes y clasificar infracciones al Reglamento Oficial del servidor.
 
+EL USUARIO PERTENECE AL STAFF: ${isStaff ? 'SÍ' : 'NO'}
 CONTEXTO RECIENTE:${contextStr}
 MENSAJE A EVALUAR: "${content}"
 
@@ -127,16 +129,20 @@ CLASIFICACIÓN DE INFRACCIONES (Reglamento §02 y §05):
 - DOXXING: revelar datos personales de terceros sin consentimiento. (100 pts - BAN inmediato)
 - SCAM: phishing, estafas, malware o solicitud de credenciales. (100 pts - BAN inmediato)
 - CONTENIDO_MENOR: cualquier contenido sexual que involucre menores. (100 pts - BAN inmediato + reporte)
+- JUEGO_STAFF: Exclusivo si el usuario ES PARTE DEL STAFF y está usando groserías o palabras altisonantes en claro tono de juego o broma. (0 pts)
 - NINGUNA: el mensaje no viola ninguna norma del reglamento.
 
-IMPORTANTE: Analiza el contexto antes de clasificar. Considera el sarcasmo, juego entre amigos y respuestas a provocaciones previas. NO clasifiques como infracción conversaciones informales aunque usen lenguaje informal. Solo actúa ante infracciones reales y evidentes.
+IMPORTANTE Y EXCEPCIÓN DEL STAFF:
+1. Analiza el contexto antes de clasificar. Considera el sarcasmo y respuestas a provocaciones previas. NO clasifiques como infracción conversaciones informales.
+2. Si el usuario ES DEL STAFF ("SÍ") y usa palabras altisonantes en tono de juego, DEBES clasificarlo como "JUEGO_STAFF" para no sancionarlo. En ese caso, en el "severity_reason" escribe un recordatorio amigable invitándolos a dar el buen ejemplo (Ej: "¡Hey Staff! Recuerden que somos el ejemplo de la comunidad, tratemos de moderar un poco el vocabulario incluso en juego 😉").
+3. Para el resto de los usuarios o infracciones reales graves, aplica las normas al pie de la letra (cero tolerancia a NSFW/Doxxing/Scam).
 
 Responde ÚNICAMENTE con JSON válido, sin texto adicional:
 {
-  "rule_violated": "SPAM|INSULTO_LEVE|ACOSO|IMPERSONACION|AMENAZA|DESINFORMACION|NSFW|VIOLENCIA_GRAFICA|RACISMO|DISCURSO_ODIO|DOXXING|SCAM|CONTENIDO_MENOR|NINGUNA",
+  "rule_violated": "SPAM|INSULTO_LEVE|ACOSO|IMPERSONACION|AMENAZA|DESINFORMACION|NSFW|VIOLENCIA_GRAFICA|RACISMO|DISCURSO_ODIO|DOXXING|SCAM|CONTENIDO_MENOR|JUEGO_STAFF|NINGUNA",
   "confidence": 0,
   "action_suggested": "WARN|MUTE|KICK|BAN|NONE",
-  "severity_reason": "Descripcion neutral y profesional de la infraccion, sin usar insultos ni lenguaje informal"
+  "severity_reason": "Descripcion neutral y profesional de la infraccion (o recordatorio amistoso si es JUEGO_STAFF)"
 }`;
 
   try {

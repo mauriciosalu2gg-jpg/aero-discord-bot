@@ -221,8 +221,11 @@ async function runAutoModeration(message) {
     console.error('[moderation] Error obteniendo contexto:', err.message);
   }
 
+  const staffRoleIds = ['1493970384289140766', '1494880439960211618', '1493312223458889838'];
+  const isStaff = message.member?.roles?.cache.some(r => staffRoleIds.includes(r.id)) || message.member?.permissions?.has('Administrator') || false;
+
   // Si parece sospechoso, usamos IA con el contexto
-  const aiResult = await analyzeWithAI(message.content, recentMessages);
+  const aiResult = await analyzeWithAI(message.content, recentMessages, isStaff);
   if (aiResult.rule_violated === 'NINGUNA') return false;
 
   const botMember = message.guild.members.me;
@@ -243,12 +246,17 @@ async function runAutoModeration(message) {
     action = determineAction(totalPoints);
   }
 
+  // Si es un chiste del staff, forzamos un WARN (recordatorio) ignorando sus puntos acumulados.
+  if (aiResult.rule_violated === 'JUEGO_STAFF') {
+    action = 'WARN';
+  }
+
   const member = message.member;
 
   await logModeration(guildId, message.author.id, action, aiResult.severity_reason, aiResult.confidence);
 
-  // Siempre eliminar el mensaje dañino, sin importar el nivel de sanción.
-  if (message.deletable) {
+  // Siempre eliminar el mensaje dañino, sin importar el nivel de sanción (excepto si es juego de staff).
+  if (message.deletable && aiResult.rule_violated !== 'JUEGO_STAFF') {
     await message.delete().catch(() => {});
   }
 
