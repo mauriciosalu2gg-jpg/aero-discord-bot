@@ -246,17 +246,12 @@ async function runAutoModeration(message) {
     action = determineAction(totalPoints);
   }
 
-  // Si es un chiste del staff, forzamos un WARN (recordatorio) ignorando sus puntos acumulados.
-  if (aiResult.rule_violated === 'JUEGO_STAFF') {
-    action = 'WARN';
-  }
-
   const member = message.member;
 
   await logModeration(guildId, message.author.id, action, aiResult.severity_reason, aiResult.confidence);
 
-  // Siempre eliminar el mensaje dañino, sin importar el nivel de sanción (excepto si es juego de staff).
-  if (message.deletable && aiResult.rule_violated !== 'JUEGO_STAFF') {
+  // Siempre eliminar el mensaje dañino, sin importar el nivel de sanción.
+  if (message.deletable) {
     await message.delete().catch(() => {});
   }
 
@@ -282,17 +277,10 @@ async function runAutoModeration(message) {
 
     switch(action) {
       case 'WARN':
-        if (aiResult.rule_violated === 'JUEGO_STAFF') {
-          await message.channel.send({
-            content: aiResult.severity_reason,
-            allowedMentions: { users: [message.author.id] }
-          });
-        } else {
-          await message.channel.send({
-            content: formatNotice('WARN', aiResult.severity_reason, totalPoints, message.author.id),
-            allowedMentions: { users: [message.author.id] }
-          });
-        }
+        await message.channel.send({
+          content: formatNotice('WARN', aiResult.severity_reason, totalPoints, message.author.id),
+          allowedMentions: { users: [message.author.id] }
+        });
         break;
       case 'MUTE':
         if (member && (botHasAdmin || member.moderatable)) {
