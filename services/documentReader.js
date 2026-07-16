@@ -1,7 +1,7 @@
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
-const MAX_TEXT_LENGTH = 25000; // ~10-15 pages of text max to avoid context explosion
+const MAX_TEXT_LENGTH = 5000; // ~2-3 pages of text max to avoid context explosion on small AI models
 
 // Mime types we consider plain text
 const TEXT_MIMES = [

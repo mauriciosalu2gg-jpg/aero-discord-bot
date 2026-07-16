@@ -9,14 +9,14 @@ export async function handleResetMemoryCommand(interaction) {
 
   await interaction.deferReply({ ephemeral: true });
 
-  if (sub === 'channel' || sub === 'server' || sub === 'all') {
+  if (sub === 'borrar_canal' || sub === 'borrar_server') {
     const config = await getUserMemoryConfig(userId);
     await resetUserMemory(userId, guildId, config.mode);
     await interaction.editReply({ content: 'listo, he olvidado todo tu historial en este modo ✅' });
     return true;
   }
 
-  if (sub === 'mode') {
+  if (sub === 'modo') {
     const mode = interaction.options.getString('modo');
     const config = await getUserMemoryConfig(userId);
     config.mode = mode;
@@ -25,7 +25,7 @@ export async function handleResetMemoryCommand(interaction) {
     return true;
   }
 
-  if (sub === 'profile') {
+  if (sub === 'perfil') {
     const config = await getUserMemoryConfig(userId);
     const nombre = interaction.options.getString('nombre');
     const pronombres = interaction.options.getString('pronombres');

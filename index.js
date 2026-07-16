@@ -473,6 +473,7 @@ client.on('messageCreate', async (message) => {
       swearingAllowed: flags.swearing,
       respectfulOnly: flags.respectfulOnly,
       securityMode: flags.securityMode,
+      botPersonality: flags.botPersonality || 'asistente',
     });
 
     lastAIResponse = { provider: response.provider, model: response.model };
