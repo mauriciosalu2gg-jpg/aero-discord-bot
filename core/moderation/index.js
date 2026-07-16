@@ -43,9 +43,10 @@ const SUSPICIOUS_WORDS = [
   // Abreviaciones comunes
   'ptm', 'alv', 'ctm', 'cdsm', 'kbro', 'mrd', 'mmg', 'hdspm', 'csm', 'ojt', 'pdj', 
   'pndjo', 'pndejo', 'cbrn', 'kbron', 'vrg', 'vga', 'pt', 'ptos', 'ptas',
-  'chngd', 'mmd', 'mmdas', 'mmhvo', 'pnch', 'mrcn', 'zrra', 'prra', 'clr'
+  'chngd', 'mmd', 'mmdas', 'mmhvo', 'pnch', 'mrcn', 'zrra', 'prra', 'clr',
+  'pndj', 'pndjs', 'hdtpm', 'lpm', 'qlo', 'qlos', 'vdg', 'vldg', 'hp', 'hdlgp', 'cdspm'
 ];
-const SUSPICIOUS_REGEX = new RegExp(`\\b(${SUSPICIOUS_WORDS.join('|')})`, 'i');
+const SUSPICIOUS_REGEX = new RegExp(`\\b(${SUSPICIOUS_WORDS.join('|')})\\b`, 'i');
 
 // ── Flags de Activacion de Moderacion (Con soporte para ciclos temporales) ──
 const activeGuildsCache = new Map();
