@@ -251,9 +251,7 @@ async function runAutoModeration(message) {
   await logModeration(guildId, message.author.id, action, aiResult.severity_reason, aiResult.confidence);
 
   // Siempre eliminar el mensaje dañino, sin importar el nivel de sanción.
-  if (message.deletable) {
-    await message.delete().catch(() => {});
-  }
+  await message.delete().catch(err => console.error('[moderation] Fallo al borrar mensaje:', err.message));
 
   try {
     const { EmbedBuilder } = await import('discord.js');
