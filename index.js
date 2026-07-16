@@ -256,8 +256,7 @@ async function runAutoModeration(message) {
   }
 
   try {
-    // Mensaje de notificacion formal acorde al Reglamento Oficial §04
-    const { EmbedBuilder } = require('discord.js');
+    const { EmbedBuilder } = await import('discord.js');
     const formatEmbed = (actionType, reason, pts, authorId, rule) => {
       const levels = [
         { threshold: 100, label: 'Baneo permanente', color: 0xFF0000 },
