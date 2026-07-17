@@ -36,6 +36,9 @@ const SUSPICIOUS_WORDS = [
   'bolud', 'pendej', 'idiot', 'imbecil', 'estupid', 'inutil', 'basura', 'mierda',
   'sorete', 'gil', 'put', 'maric', 'hdp', 'malparid', 'desgraciad', 'trol',
   'pelotud', 'forr', 'nefast', 'matate', 'muerete', 'desaparece',
+  // Faltas de respeto (para que el bot se defienda)
+  'calla', 'callate', 'cállate', 'callas', 'calles', 'tonto', 'bobo', 'menso', 'feo', 'fea', 'asco', 'perro',
+  'perdedor', 'callese', 'cállese', 'callense', 'cállense',
   // Mexicanos / Latinos explícitos
   'chinga', 'chingar', 'chingada', 'cabron', 'mamada', 'mamaguevo', 'mamagwebo',
   'conchatumadre', 'culero', 'pinche', 'joto', 'zorra', 'perra', 'mierdero', 'pendejada',
@@ -247,8 +250,8 @@ MENSAJE A EVALUAR: "${content}"
 
 CLASIFICACIÓN DE INFRACCIONES (Reglamento §02 y §05):
 - SPAM: publicidad no autorizada, invitaciones a otros servidores, links sin contexto, mensajes repetitivos. (10 pts)
-- INSULTO_LEVE: ofensas directas, burlas o lenguaje despectivo hacia otro miembro. (20 pts)
-- ACOSO: hostigamiento reiterado, persecución o intimidación hacia un usuario. (30 pts)
+- INSULTO_LEVE: ofensas directas, burlas, faltas de respeto o lenguaje despectivo hacia otro miembro o hacia ti mismo (el bot). ¡Si te faltan al respeto o te mandan a callar, penalízalos! (20 pts)
+- ACOSO: hostigamiento reiterado, persecución o intimidación hacia un usuario o hacia el bot. (30 pts)
 - IMPERSONACION: hacerse pasar por otro usuario, staff o entidad oficial. (30 pts)
 - AMENAZA: desear o amenazar con daño físico, emocional o económico. (40 pts)
 - DESINFORMACION: compartir información deliberadamente falsa con intención de engañar. (30 pts)
