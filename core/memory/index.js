@@ -14,8 +14,8 @@ const LOCAL_FALLBACK_DIR = path.join(__dirname, '..', '..', 'data', 'stats'); //
 export async function getUserMemory(userId, guildId, mode) {
   if (mode === 'off') return { messages: [], summary: '', facts: [] };
   
-  const messagesPath = `guilds/${guildId}/users/${userId}/messages`;
-  const factsPath = mode === 'global' ? `global/users/${userId}/facts` : `guilds/${guildId}/users/${userId}/facts`;
+  const messagesPath = `guilds/${guildId}/users/${userId}_messages`;
+  const factsPath = mode === 'global' ? `global/data/users/${userId}_facts` : `guilds/${guildId}/users/${userId}_facts`;
 
   const messagesData = await getCached(messagesPath, { messages: [] });
   const factsData = await getCached(factsPath, { facts: [], summary: '' });
@@ -30,8 +30,8 @@ export async function getUserMemory(userId, guildId, mode) {
 export async function saveUserMemory(userId, guildId, mode, memoryData) {
   if (mode === 'off') return;
 
-  const messagesPath = `guilds/${guildId}/users/${userId}/messages`;
-  const factsPath = mode === 'global' ? `global/users/${userId}/facts` : `guilds/${guildId}/users/${userId}/facts`;
+  const messagesPath = `guilds/${guildId}/users/${userId}_messages`;
+  const factsPath = mode === 'global' ? `global/data/users/${userId}_facts` : `guilds/${guildId}/users/${userId}_facts`;
 
   // Auto-resumen si llega al limite (ej. 40 mensajes)
   if (memoryData.messages && memoryData.messages.length > 40) {
@@ -46,11 +46,11 @@ export async function saveUserMemory(userId, guildId, mode, memoryData) {
 export async function resetUserMemory(userId, guildId, mode) {
   if (mode === 'off') return { messages: [], summary: '', facts: [] };
   
-  const messagesPath = `guilds/${guildId}/users/${userId}/messages`;
+  const messagesPath = `guilds/${guildId}/users/${userId}_messages`;
   setCached(messagesPath, { messages: [], updatedAt: new Date().toISOString() });
   
   // Borramos los facts del nivel correspondiente al modo actual
-  const factsPath = mode === 'global' ? `global/users/${userId}/facts` : `guilds/${guildId}/users/${userId}/facts`;
+  const factsPath = mode === 'global' ? `global/data/users/${userId}_facts` : `guilds/${guildId}/users/${userId}_facts`;
   setCached(factsPath, { facts: [], summary: '', updatedAt: new Date().toISOString() });
   
   return { messages: [], summary: '', facts: [] };
@@ -73,7 +73,7 @@ export async function addGuildTokenUsage(guildId, tokens) {
   setCached(docPath, data);
 
   // Guardar tambien a nivel global
-  const globalPath = 'global/stats/tokens';
+  const globalPath = 'global/data/stats/tokens';
   const globalData = await getCached(globalPath, { total: 0 });
   globalData.total = (globalData.total || 0) + tokens;
   globalData.updatedAt = new Date().toISOString();
@@ -81,7 +81,7 @@ export async function addGuildTokenUsage(guildId, tokens) {
 }
 
 export async function getGlobalTokenUsage() {
-  const data = await getCached('global/stats/tokens', { total: 0 });
+  const data = await getCached('global/data/stats/tokens', { total: 0 });
   return data.total || 0;
 }
 
