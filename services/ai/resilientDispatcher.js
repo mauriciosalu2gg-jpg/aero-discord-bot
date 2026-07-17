@@ -86,6 +86,7 @@ export async function dispatchWithFallback({ providers, history, systemExtra, in
     if (isOnCooldown(provider.name)) {
       const remaining = fmtMs(getCooldownRemainingMs(provider.name));
       console.log(`[AI] ${provider.name} en cooldown (${remaining} restantes) — saltando`);
+      attempts.push({ provider: provider.name, model: 'cooldown', reason: 'Rate limited (en cooldown)', retryable: false });
       continue;
     }
 
