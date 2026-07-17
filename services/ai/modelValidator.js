@@ -62,8 +62,8 @@ export async function validateProviderModels(providerName, apiKey) {
   const stillValid = ladder.filter(m => ids.has(m));
 
   if (ladder.length > 0 && stillValid.length === 0) {
-    console.warn(`[modelValidator] ${providerName}: ninguno de sus modelos configurados (${ladder.join(', ')}) existe segun la API. Marcando Unavailable.`);
-    markUnavailable(providerName, `Ningun modelo configurado existe: ${ladder.join(', ')}`);
+    console.warn(`[modelValidator] ${providerName}: ninguno de sus modelos configurados (${ladder.join(', ')}) existe segun la API. Omitiendo validación estricta para evitar bloqueos (fail-open).`);
+    // Eliminado markUnavailable para evitar la race condition mencionada en el bug report
   } else {
     const missing = ladder.filter(m => !ids.has(m));
     if (missing.length > 0) {

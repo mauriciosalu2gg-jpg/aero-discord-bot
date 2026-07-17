@@ -146,6 +146,9 @@ async function tryOnce(provider, model, history, systemExtra, intent, attempts) 
       const cooldownMs = markCooldown(provider.name, kind, err.retryAfterMs);
       const source = (Number.isFinite(err.retryAfterMs) && err.retryAfterMs > 0) ? 'Retry-After' : 'default';
       console.log(`[AI] ${provider.name} → Cooldown ${fmtMs(cooldownMs)} (${source})`);
+    } else {
+      const cooldownMs = markCooldown(provider.name, 'modelNotFound'); // Reusing a 60 min cooldown for fatal errors
+      console.log(`[AI] ${provider.name} → Fallo definitivo (fatal). Cooldown ${fmtMs(cooldownMs)}`);
     }
 
     if (getActiveProviderName() === provider.name) {

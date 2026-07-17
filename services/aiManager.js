@@ -8,6 +8,7 @@
 //   - services/adapters/local.js      -> Ollama / LM Studio (último recurso)
 import secrets from '../secrets.js';
 import { getModelLadder } from './ai/modelLadders.js';
+import { filterValidModels } from './ai/modelValidator.js';
 import { startConfigRefresh, getPanelConfig } from './ai/panelConfig.js';
 import { buildSystemExtra } from './ai/systemContext.js';
 import { dispatchWithFallback } from './ai/resilientDispatcher.js';
@@ -86,7 +87,7 @@ function buildProviderChain(panelConfig, recentTokens, intent = 'chat') {
     const apiKey = panelConfig.apiKey || envProviders.find(p => p.name === name)?.apiKey;
     
     if (apiKey) {
-      let ladder = getModelLadder(name);
+      let ladder = filterValidModels(name, getModelLadder(name));
       
       // Si es chat normal, el preferredModel va primero.
       if (!isFastIntent && preferredModel) {
@@ -104,10 +105,11 @@ function buildProviderChain(panelConfig, recentTokens, intent = 'chat') {
 
   for (const provider of envProviders) {
     if (seen.has(provider.name)) continue;
+    let validLadder = filterValidModels(provider.name, provider.models);
     // Para los proveedores secundarios, aplicamos la misma logica de velocidad
     const models = (isFastIntent || recentTokens > TOKENS_THRESHOLD)
-      ? provider.models.slice().reverse() 
-      : provider.models;
+      ? validLadder.slice().reverse() 
+      : validLadder;
     chain.push({ name: provider.name, apiKey: provider.apiKey, models });
     seen.add(provider.name);
   }
