@@ -500,6 +500,7 @@ client.on('messageCreate', async (message) => {
     let uiInterval = null;
     const dynamicThoughts = generateDynamicThoughts(content);
 
+<<<<<<< HEAD
     // Obtener pensamientos dinámicos reales de la IA de forma asíncrona y no bloqueante
     if (isMemoryEngineAvailable() && userConfig.mode !== 'off') {
       askMemoryEngine('topic', [
@@ -516,6 +517,8 @@ client.on('messageCreate', async (message) => {
       }).catch(err => console.warn('[memory-ui] Error al generar pensamientos por IA:', err.message));
     }
 
+=======
+>>>>>>> main
     if (userConfig.mode !== 'off') {
       try {
         statusMsg = await message.channel.send(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria...*`);
@@ -547,11 +550,19 @@ client.on('messageCreate', async (message) => {
             statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*${thoughtsList}\n-# ${EMOJIS.summary} *Procesando y guardando nueva información${dots}*`).catch(() => null);
           }
           
+<<<<<<< HEAD
           // Avanzar a la siguiente línea de pensamiento de forma progresiva
           if (stepIndex < dynamicThoughts.length) {
             stepIndex++;
           }
         }, 1200);
+=======
+          // Avanzar a la siguiente línea de pensamiento cada 2 segundos de forma progresiva
+          if (stepIndex < dynamicThoughts.length && Math.random() > 0.4) {
+            stepIndex++;
+          }
+        }, 1000);
+>>>>>>> main
       } catch (err) {
         console.error('[memory-ui] Error al enviar estado inicial:', err.message);
       }
