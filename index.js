@@ -529,12 +529,20 @@ client.on('messageCreate', async (message) => {
     let thinkingInterval = null;
     const thinkingStart = Date.now();
 
+    // Frases que rotan mientras piensa — más dinámico y natural
+    const _thinkingPhrases = [
+      'Pensando', 'Analizando', 'Procesando',
+      'Reflexionando', 'Formulando', 'Considerando',
+    ];
     try {
-      thinkingMsg = await message.channel.send(`-# ${EMOJIS.thinking} *Pensando*`);
-      let dotCount = 0;
+      thinkingMsg = await message.channel.send(`${EMOJIS.thinking} *Pensando*`);
+      let _dotCount = 0;
+      let _phraseIdx = 0;
       thinkingInterval = setInterval(() => {
-        dotCount = (dotCount % 3) + 1;
-        thinkingMsg.edit(`-# ${EMOJIS.thinking} *Pensando${'.'.repeat(dotCount)}*`).catch(() => null);
+        _dotCount = (_dotCount % 3) + 1;
+        if (_dotCount === 3) _phraseIdx = (_phraseIdx + 1) % _thinkingPhrases.length;
+        const phrase = _thinkingPhrases[_phraseIdx];
+        thinkingMsg.edit(`${EMOJIS.thinking} *${phrase}${'.'.repeat(_dotCount)}*`).catch(() => null);
       }, 700);
     } catch (err) {
       console.warn('[ui] No se pudo enviar estado de pensamiento:', err.message);
@@ -703,14 +711,8 @@ client.on('messageCreate', async (message) => {
       createdAt: new Date().toISOString(),
     });
 
-    // ═══════════════════════════════════════════════════════
-    // 💡 Detener "Pensando" → mostrar tiempo transcurrido
-    // ═══════════════════════════════════════════════════════
-    if (thinkingInterval) clearInterval(thinkingInterval);
-    const thinkingTime = formatThinkingTime(Date.now() - thinkingStart);
-    if (thinkingMsg) {
-      await thinkingMsg.edit(`-# ${EMOJIS.thinking} *Pensó por ${thinkingTime}*`).catch(() => null);
-    }
+    // La animación de "Pensando" sigue corriendo durante el delay de typing
+    // Se detiene justo ANTES de que el primer mensaje llegue al canal.
 
     // ═══════════════════════════════════════════════════════
     // 📚 MEMORY ENGINE — Guardado asíncrono en segundo plano
@@ -749,6 +751,17 @@ client.on('messageCreate', async (message) => {
       incomingLength: content.length,
     });
     await humanizedTyping(message.channel, thinkingMs);
+
+    // ═══════════════════════════════════════════════════════
+    // 💡 Detener "Pensando" → mostrar tiempo transcurrido
+    //    Se hace AQUÍ, justo antes de enviar, para que la
+    //    animación corra durante todo el delay de typing.
+    // ═══════════════════════════════════════════════════════
+    if (thinkingInterval) clearInterval(thinkingInterval);
+    const thinkingTime = formatThinkingTime(Date.now() - thinkingStart);
+    if (thinkingMsg) {
+      await thinkingMsg.edit(`-# ${EMOJIS.thinking} *Pensó por ${thinkingTime}*`).catch(() => null);
+    }
 
     // 8. Fragmentar la respuesta como escribe una persona real
     const parts = splitHumanized(response.text, moodInfo);
