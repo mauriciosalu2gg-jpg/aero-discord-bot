@@ -52,6 +52,7 @@ const trackedChannels = new Map(); // channelId -> { guildId }
 
 // Rate limiter para evitar spam a la IA y evitar el límite de peticiones (429)
 const userRateLimits = new Map();
+const activeUserProcesses = new Set();
 const MAX_REQUESTS = 5; // Peticiones máximas permitidas
 const RATE_LIMIT_WINDOW = 60000; // En un lapso de 1 minuto (60000 ms)
 
@@ -508,11 +509,17 @@ client.on('messageCreate', async (message) => {
   // --- COMPROBACIÓN DE RATE LIMIT ---
   const rlStatus = handleRateLimit(message.author.id);
   if (rlStatus === 'WARN') {
-    await message.reply("⏳ ¡Vas muy rápido! Estoy recibiendo demasiadas solicitudes. Espera un minuto para que mi sistema se restaure.");
+    await message.reply("⏳ ¡Vas muy rápido! Estoy recibiendo demasiadas solicitudes. Espera un momento a que termine con las anteriores.");
     return;
   } else if (rlStatus === 'BLOCKED') {
     return; // Ya fue advertido, ignorar en silencio
   }
+
+  if (activeUserProcesses.has(message.author.id)) {
+    await message.reply("⏳ Espera un momento a que termine de responder tu mensaje anterior.");
+    return;
+  }
+  activeUserProcesses.add(message.author.id);
   // ----------------------------------
 
   try {
@@ -745,11 +752,17 @@ client.on('messageCreate', async (message) => {
     if (guildId) config.addTokenUsage(guildId, response.tokens || estimateTokens(response.text));
 
     // 7. Delay humano dinamico
-    const thinkingMs = computeThinkingDelay({
+    let thinkingMs = computeThinkingDelay({
       responseText: response.text,
       moodInfo,
       incomingLength: content.length,
     });
+    
+    // Respuestas Rápidas para Mensajes Cortitos
+    const isShortMessage = content.trim().length <= 12 || content.split(/\\s+/).length <= 3;
+    if (isShortMessage) {
+      thinkingMs = 150; // Delay corto de 150ms
+    }
     await humanizedTyping(message.channel, thinkingMs);
 
     // ═══════════════════════════════════════════════════════
@@ -770,7 +783,7 @@ client.on('messageCreate', async (message) => {
         const chunk = chunks[j];
         
         if (!firstMessageEdited && thinkingMsg) {
-          await thinkingMsg.edit(`${chunk}\n\n-# ${EMOJIS.thinking} *Pensó por ${thinkingTime}*`).catch(() => null);
+          await thinkingMsg.edit(`${chunk}\n-# ${EMOJIS.thinking} *Pensó por ${thinkingTime}*`).catch(() => null);
           firstMessageEdited = true;
         } else {
           await message.channel.send(chunk);
@@ -800,6 +813,8 @@ client.on('messageCreate', async (message) => {
       }
     }
     await message.reply(`${pickMuletilla(channelId)}, tengo problemas con la ia ahora mismo, intenta en un rato (Error: Todos los proveedores fallaron)`);
+  } finally {
+    activeUserProcesses.delete(message.author.id);
   }
 });
 

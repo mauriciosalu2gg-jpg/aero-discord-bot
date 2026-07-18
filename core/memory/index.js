@@ -1,4 +1,4 @@
-import { getCached, setCached, flushCached } from '../cache/firebaseCache.js';
+import { getCached, setCached, flushCached, deleteCached } from '../cache/firebaseCache.js';
 import { summarizeMemoryHistory, detectTopicChange } from '../summary/index.js';
 import { isMemoryEngineAvailable } from '../../services/ai/memoryRouter.js';
 import fs from 'fs';
@@ -272,7 +272,35 @@ export async function resetUserMemory(userId, guildId, mode, channelId) {
   const updatedAt = new Date().toISOString();
   setCached(msgPath, { messages: [], updatedAt });
   setCached(fPath, { facts: [], summary: '', updatedAt });
-  await Promise.all([flushCached(msgPath), flushCached(fPath)]);
+  
+  const pPath = profilePath(userId);
+  const tPath = topicsPath(userId);
+  const sPath = topicStatePath(userId, guildId);
+
+  try {
+    if (typeof deleteCached === 'function') {
+      await Promise.all([
+        deleteCached(pPath), 
+        deleteCached(tPath), 
+        deleteCached(sPath),
+        flushCached(msgPath), 
+        flushCached(fPath)
+      ]);
+    } else {
+      setCached(pPath, null);
+      setCached(tPath, null);
+      setCached(sPath, null);
+      await Promise.all([
+        flushCached(msgPath), 
+        flushCached(fPath),
+        flushCached(pPath), 
+        flushCached(tPath), 
+        flushCached(sPath)
+      ]);
+    }
+  } catch (err) {
+    console.error('[memory] Error limpiando profile/topics:', err.message);
+  }
 
   return { messages: [], summary: '', facts: [] };
 }
