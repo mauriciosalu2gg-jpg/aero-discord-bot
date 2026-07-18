@@ -25,6 +25,7 @@ import { handleApiKeyQuestion } from './commands/apikey.js';
 import { getActiveProvider, startHealthReporting } from './services/ai/providerHealth.js';
 import { db } from './database/firebase.js';
 import { isBasicModel } from './config/providers.js';
+import { askMemoryEngine, isMemoryEngineAvailable } from './services/ai/memoryRouter.js';
 
 const PORT = process.env.PORT || 3000;
 const startTime = Date.now();
@@ -499,6 +500,22 @@ client.on('messageCreate', async (message) => {
     let uiInterval = null;
     const dynamicThoughts = generateDynamicThoughts(content);
 
+    // Obtener pensamientos dinámicos reales de la IA de forma asíncrona y no bloqueante
+    if (isMemoryEngineAvailable() && userConfig.mode !== 'off') {
+      askMemoryEngine('topic', [
+        { role: 'user', content: `Genera una lista de 3 pasos muy breves de lo que un bot de Discord debería analizar, verificar o recuperar de su memoria a largo plazo para responder a este mensaje del usuario: "${content}". Devuelve únicamente los pasos, uno por línea, sin enumeraciones, números, viñetas ni explicaciones.` }
+      ], 0.1).then(res => {
+        const steps = res.split('\n')
+          .map(s => s.trim().replace(/^[-*•\d\.\s]+/, '').slice(0, 80))
+          .filter(s => s.length > 5);
+        if (steps.length > 0) {
+          // Reemplazar la lista estática por la generada dinámicamente por la IA
+          dynamicThoughts.length = 0;
+          dynamicThoughts.push(...steps);
+        }
+      }).catch(err => console.warn('[memory-ui] Error al generar pensamientos por IA:', err.message));
+    }
+
     if (userConfig.mode !== 'off') {
       try {
         statusMsg = await message.channel.send(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria...*`);
@@ -530,11 +547,11 @@ client.on('messageCreate', async (message) => {
             statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*${thoughtsList}\n-# ${EMOJIS.summary} *Procesando y guardando nueva información${dots}*`).catch(() => null);
           }
           
-          // Avanzar a la siguiente línea de pensamiento cada 2 segundos de forma progresiva
-          if (stepIndex < dynamicThoughts.length && Math.random() > 0.4) {
+          // Avanzar a la siguiente línea de pensamiento de forma progresiva
+          if (stepIndex < dynamicThoughts.length) {
             stepIndex++;
           }
-        }, 1000);
+        }, 1200);
       } catch (err) {
         console.error('[memory-ui] Error al enviar estado inicial:', err.message);
       }
