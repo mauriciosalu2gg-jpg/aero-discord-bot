@@ -1,4 +1,4 @@
-import { getCached, setCached, deleteCached } from '../cache/firebaseCache.js';
+import { getCached, setCached, flushCached } from '../cache/firebaseCache.js';
 import { summarizeMemoryHistory } from '../summary/index.js';
 import fs from 'fs';
 import path from 'path';
@@ -11,14 +11,39 @@ const LOCAL_FALLBACK_DIR = path.join(__dirname, '..', '..', 'data', 'stats'); //
 
 // ── Memoria de Chat por Usuario (Cacheada en RAM -> Firebase) ──────────
 
-export async function getUserMemory(userId, guildId, mode) {
-  if (mode === 'off') return { messages: [], summary: '', facts: [] };
-  
-  const messagesPath = `guilds/${guildId}/users/${userId}_messages`;
-  const factsPath = mode === 'global' ? `global/data/users/${userId}_facts` : `guilds/${guildId}/users/${userId}_facts`;
+function memoryScope(guildId, mode) {
+  return mode === 'global' ? 'global' : (guildId || 'direct');
+}
 
-  const messagesData = await getCached(messagesPath, { messages: [] });
-  const factsData = await getCached(factsPath, { facts: [], summary: '' });
+function conversationPath(userId, guildId, mode, channelId) {
+  const scope = memoryScope(guildId, mode);
+  return `memoryScopes/${scope}/conversations/${channelId || 'direct'}/users/${userId}`;
+}
+
+function factsPath(userId, guildId, mode) {
+  return `memoryScopes/${memoryScope(guildId, mode)}/facts/${userId}`;
+}
+
+export async function getUserMemory(userId, guildId, mode, channelId) {
+  if (mode === 'off') return { messages: [], summary: '', facts: [] };
+
+  const messagesPath = conversationPath(userId, guildId, mode, channelId);
+  const userFactsPath = factsPath(userId, guildId, mode);
+  let messagesData = await getCached(messagesPath, null);
+  let factsData = await getCached(userFactsPath, null);
+
+  // Migración silenciosa desde el esquema anterior: conserva los recuerdos
+  // existentes y, desde el siguiente guardado, usa historial por canal.
+  if (!messagesData) {
+    const legacyPath = `guilds/${guildId || 'direct'}/users/${userId}_messages`;
+    messagesData = await getCached(legacyPath, { messages: [] });
+  }
+  if (!factsData) {
+    const legacyPath = mode === 'global'
+      ? `global/data/users/${userId}_facts`
+      : `guilds/${guildId || 'direct'}/users/${userId}_facts`;
+    factsData = await getCached(legacyPath, { facts: [], summary: '' });
+  }
 
   return { 
     messages: messagesData.messages || [],
@@ -27,11 +52,11 @@ export async function getUserMemory(userId, guildId, mode) {
   };
 }
 
-export async function saveUserMemory(userId, guildId, mode, memoryData) {
+export async function saveUserMemory(userId, guildId, mode, memoryData, channelId) {
   if (mode === 'off') return;
 
-  const messagesPath = `guilds/${guildId}/users/${userId}_messages`;
-  const factsPath = mode === 'global' ? `global/data/users/${userId}_facts` : `guilds/${guildId}/users/${userId}_facts`;
+  const messagesPath = conversationPath(userId, guildId, mode, channelId);
+  const userFactsPath = factsPath(userId, guildId, mode);
 
   // Auto-resumen si llega al limite (ej. 40 mensajes)
   if (memoryData.messages && memoryData.messages.length > 40) {
@@ -39,19 +64,23 @@ export async function saveUserMemory(userId, guildId, mode, memoryData) {
     memoryData = summarized;
   }
   
-  setCached(messagesPath, { messages: memoryData.messages, updatedAt: new Date().toISOString() });
-  setCached(factsPath, { facts: memoryData.facts, summary: memoryData.summary, updatedAt: new Date().toISOString() });
+  const updatedAt = new Date().toISOString();
+  setCached(messagesPath, { messages: memoryData.messages, updatedAt });
+  setCached(userFactsPath, { facts: memoryData.facts, summary: memoryData.summary, updatedAt });
+  await Promise.all([flushCached(messagesPath), flushCached(userFactsPath)]);
 }
 
-export async function resetUserMemory(userId, guildId, mode) {
+export async function resetUserMemory(userId, guildId, mode, channelId) {
   if (mode === 'off') return { messages: [], summary: '', facts: [] };
   
-  const messagesPath = `guilds/${guildId}/users/${userId}_messages`;
-  setCached(messagesPath, { messages: [], updatedAt: new Date().toISOString() });
+  const messagesPath = conversationPath(userId, guildId, mode, channelId);
+  const userFactsPath = factsPath(userId, guildId, mode);
+  const updatedAt = new Date().toISOString();
+  setCached(messagesPath, { messages: [], updatedAt });
   
   // Borramos los facts del nivel correspondiente al modo actual
-  const factsPath = mode === 'global' ? `global/data/users/${userId}_facts` : `guilds/${guildId}/users/${userId}_facts`;
-  setCached(factsPath, { facts: [], summary: '', updatedAt: new Date().toISOString() });
+  setCached(userFactsPath, { facts: [], summary: '', updatedAt });
+  await Promise.all([flushCached(messagesPath), flushCached(userFactsPath)]);
   
   return { messages: [], summary: '', facts: [] };
 }

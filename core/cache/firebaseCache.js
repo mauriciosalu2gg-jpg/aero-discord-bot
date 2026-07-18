@@ -78,6 +78,34 @@ export function setCached(docPath, data) {
 }
 
 /**
+ * Persiste un documento concreto sin esperar al ciclo de cinco minutos.
+ * La memoria conversacional se guarda al terminar cada turno para que un
+ * redeploy de Render no borre los últimos mensajes.
+ */
+export async function flushCached(docPath) {
+  if (!db) return;
+
+  const data = cache.get(docPath);
+  if (!data) return;
+
+  try {
+    const segments = docPath.split('/');
+    if (segments.length % 2 !== 0) return;
+
+    let docRef = db;
+    for (let i = 0; i < segments.length; i += 2) {
+      docRef = docRef.collection(segments[i]).doc(segments[i + 1]);
+    }
+    await docRef.set(data, { merge: true });
+    dirtyKeys.delete(docPath);
+  } catch (err) {
+    // Queda marcado como dirty para que el flush periódico lo reintente.
+    dirtyKeys.add(docPath);
+    console.error(`[cache] Error guardando ${docPath}:`, err.message);
+  }
+}
+
+/**
  * Remove data from cache and immediately delete from Firebase
  */
 export async function deleteCached(docPath) {
