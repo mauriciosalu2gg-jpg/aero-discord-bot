@@ -462,9 +462,30 @@ client.on('messageCreate', async (message) => {
     
     // Crear el mensaje de estado inicial (como Claude: Pensando / Recuperando...)
     let statusMsg = null;
+    let uiState = 'RECOVERING'; // 'RECOVERING' | 'SEARCHING' | 'SAVING' | 'DONE'
+    let activeTopicLabel = 'charla';
+    let uiInterval = null;
+
     if (userConfig.mode !== 'off') {
       try {
         statusMsg = await message.channel.send(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria...*`);
+        
+        let dotCount = 3;
+        uiInterval = setInterval(() => {
+          if (uiState === 'DONE') {
+            clearInterval(uiInterval);
+            return;
+          }
+          dotCount = (dotCount % 3) + 1; // 1, 2, 3
+          const dots = '.'.repeat(dotCount);
+          if (uiState === 'RECOVERING') {
+            statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria${dots}*`).catch(() => null);
+          } else if (uiState === 'SEARCHING') {
+            statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Identificando detalles de ${activeTopicLabel.toLowerCase()}${dots}*`).catch(() => null);
+          } else if (uiState === 'SAVING') {
+            statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*\n-# ${EMOJIS.summary} *Procesando y guardando nueva información${dots}*`).catch(() => null);
+          }
+        }, 1000);
       } catch (err) {
         console.error('[memory-ui] Error al enviar estado inicial:', err.message);
       }
@@ -497,7 +518,6 @@ client.on('messageCreate', async (message) => {
     }
 
     // Recuperación inteligente: inyectar los TOP 5 temas relevantes
-    let activeTopicLabel = 'charla';
     try {
       const relevantTopics = await getRelevantTopics(message.author.id, content, 5);
       if (relevantTopics.length > 0) {
@@ -508,10 +528,8 @@ client.on('messageCreate', async (message) => {
         summaryForAI += `\n\nTEMAS ANTERIORES RELEVANTES:\n${topicsSummary}`;
       }
       
-      // Actualizar UI: Identificando detalles...
-      if (statusMsg) {
-        await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.database} *Identificando detalles de ${activeTopicLabel.toLowerCase()}...*`).catch(() => null);
-      }
+      // Cambiar estado de UI a búsqueda/recuperación específica
+      uiState = 'SEARCHING';
     } catch { /* sin topics aún */ }
 
     memory.messages = memory.messages || [];
@@ -591,25 +609,28 @@ client.on('messageCreate', async (message) => {
     // Detectar si el usuario pidió explícitamente recordar algo
     const explicitRemember = /recuerda|guarda|acuerdate|memoriza|guarda en tu memoria/i.test(content);
 
-    // Guardar respuesta en memoria persistente de forma asíncrona
+    // Guardar respuesta en memoria persistente de forma asíncrona (Fase de Guardado/Escritura)
     (async () => {
       try {
-        if (statusMsg) {
-          await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*\n-# ${EMOJIS.summary} *Procesando y actualizando memoria...*`).catch(() => null);
-        }
+        uiState = 'SAVING';
 
         const result = await saveUserMemory(message.author.id, guildId, userConfig.mode, memory, channelId);
         
+        uiState = 'DONE';
+        if (uiInterval) clearInterval(uiInterval);
+
         if (statusMsg) {
           if (result && (result.summarized || explicitRemember)) {
             const topicTitle = result.topicClosed?.title || activeTopicLabel;
-            await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*\n-# ${EMOJIS.summary} *Tema [${topicTitle}] resumido y archivado.*\n-# ${EMOJIS.done} **Memory updated**`).catch(() => null);
+            await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*\n-# ${EMOJIS.summary} *Tema [${topicTitle}] resumido y guardado.*\n-# ${EMOJIS.done} **Memory updated**`).catch(() => null);
           } else {
-            await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*\n-# ${EMOJIS.done} **Listo**`).catch(() => null);
+            await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*\n-# ${EMOJIS.done} **Listo**`).catch(() => null);
           }
         }
       } catch (err) {
         console.error('[memory] Error guardando memoria:', err.message);
+        uiState = 'DONE';
+        if (uiInterval) clearInterval(uiInterval);
         if (statusMsg) {
           await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.error} *Error al guardar la memoria.*`).catch(() => null);
         }
