@@ -500,25 +500,22 @@ client.on('messageCreate', async (message) => {
     let uiInterval = null;
     const dynamicThoughts = generateDynamicThoughts(content);
 
-<<<<<<< HEAD
     // Obtener pensamientos dinámicos reales de la IA de forma asíncrona y no bloqueante
+    // Esto permite que Memory Engine genere 3-20 pasos específicos para este mensaje
     if (isMemoryEngineAvailable() && userConfig.mode !== 'off') {
       askMemoryEngine('topic', [
-        { role: 'user', content: `Genera una lista de 3 pasos muy breves de lo que un bot de Discord debería analizar, verificar o recuperar de su memoria a largo plazo para responder a este mensaje del usuario: "${content}". Devuelve únicamente los pasos, uno por línea, sin enumeraciones, números, viñetas ni explicaciones.` }
+        { role: 'user', content: `Genera una lista de 3 a 5 pasos muy breves y concretos de lo que un asistente de IA debería analizar, considerar o recuperar de su memoria para responder adecuadamente a este mensaje: "${content}". Devuelve ÚNICAMENTE los pasos, uno por línea, sin números, viñetas, emojis ni explicaciones adicionales. Cada paso máximo 60 caracteres.` }
       ], 0.1).then(res => {
         const steps = res.split('\n')
           .map(s => s.trim().replace(/^[-*•\d\.\s]+/, '').slice(0, 80))
-          .filter(s => s.length > 5);
+          .filter(s => s.length > 5)
+          .slice(0, 20); // Máximo 20 pasos
         if (steps.length > 0) {
-          // Reemplazar la lista estática por la generada dinámicamente por la IA
           dynamicThoughts.length = 0;
           dynamicThoughts.push(...steps);
         }
-      }).catch(err => console.warn('[memory-ui] Error al generar pensamientos por IA:', err.message));
+      }).catch(err => console.warn('[memory-engine] Error generando pensamientos:', err.message));
     }
-
-=======
->>>>>>> main
     if (userConfig.mode !== 'off') {
       try {
         statusMsg = await message.channel.send(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria...*`);
@@ -547,22 +544,14 @@ client.on('messageCreate', async (message) => {
           } else if (uiState === 'SEARCHING') {
             statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Identificando detalles de ${activeTopicLabel.toLowerCase()}${dots}*${thoughtsList}`).catch(() => null);
           } else if (uiState === 'SAVING') {
-            statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*${thoughtsList}\n-# ${EMOJIS.summary} *Procesando y guardando nueva información${dots}*`).catch(() => null);
+            statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Managing memory...*\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*${thoughtsList}\n-# ${EMOJIS.summary} *Guardando nueva información${dots}*`).catch(() => null);
           }
           
-<<<<<<< HEAD
           // Avanzar a la siguiente línea de pensamiento de forma progresiva
           if (stepIndex < dynamicThoughts.length) {
             stepIndex++;
           }
         }, 1200);
-=======
-          // Avanzar a la siguiente línea de pensamiento cada 2 segundos de forma progresiva
-          if (stepIndex < dynamicThoughts.length && Math.random() > 0.4) {
-            stepIndex++;
-          }
-        }, 1000);
->>>>>>> main
       } catch (err) {
         console.error('[memory-ui] Error al enviar estado inicial:', err.message);
       }
@@ -705,7 +694,7 @@ client.on('messageCreate', async (message) => {
         if (statusMsg) {
           if (result && (result.summarized || explicitRemember)) {
             const topicTitle = result.topicClosed?.title || activeTopicLabel;
-            await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*${thoughtsList}\n-# ${EMOJIS.summary} *Tema [${topicTitle}] resumido y guardado.*\n-# ${EMOJIS.done} **Memory updated**`).catch(() => null);
+            await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*${thoughtsList}\n-# ${EMOJIS.summary} *Tema [${topicTitle}] resumido y guardado.*\n-# ${EMOJIS.done} **Memoria actualizada**`).catch(() => null);
           } else {
             await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*${thoughtsList}\n-# ${EMOJIS.done} **Listo**`).catch(() => null);
           }
