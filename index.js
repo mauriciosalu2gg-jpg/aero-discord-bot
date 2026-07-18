@@ -71,7 +71,7 @@ function formatThinkingTime(ms) {
  * isSave: quiere guardar algo  |  isRecall: quiere recuperar algo
  */
 function detectMemoryIntent(content) {
-  const isSave   = /recuerda\s+(que|esto|eso)|guard(a|alo|arlo|ame)?\s+(que|esto|eso|el chat|la conversaci[oó]n|en tu memoria|en memoria|este pdf|esta imagen|este link|este enlace|todo esto)|memoriza|no olvides|acu[eé]rdate\s+de/i.test(content);
+  const isSave   = /recuerda\s+(que|esto|eso)|guard[aá]?(?:lo|la|me|rlo|rla)?(?:\s+(?:de|en|a|para))?\s+(?:tu\s+)?(?:memoria\s+)?(?:que|esto|eso|el chat|la conversaci[oó]n|este pdf|esta imagen|este link|este enlace|todo esto)|guard[aá]?(?:lo|la|me|rlo|rla)?.{0,40}\b(?:memoria|chat|conversaci[oó]n|pdf|imagen|link|enlace)\b|memoriza|no olvides|acu[eé]rdate\s+de/i.test(content);
   const isRecall = /qu[eé]\s+recuerdas|qu[eé]\s+sabes de m[ií]|busca en (tu|mi|la) memoria|qu[eé]\s+guardaste|tienes\s+memoria|memoria global|memoria_global/i.test(content);
   return { isSave, isRecall, isExplicit: isSave || isRecall };
 }
@@ -185,7 +185,7 @@ function extractExplicitSaveFacts(content) {
   if (!clean) return [];
 
   const patterns = [
-    /(?:recuerda|record[aá]|guarda|memoriza|no olvides)(?:\s+(?:que|esto|eso|en tu memoria))?\s+(.+)/i,
+    /(?:recuerda|record[aá]|guarda|guardame|gu[aá]rdame|gu[aá]rdalo|gu[aá]rdalo|memoriza|no olvides)(?:\s+(?:que|esto|eso|de memoria que|en memoria que|en tu memoria que|en tu memoria|en memoria))?\s+(.+)/i,
     /(?:acu[eé]rdate\s+de\s+que)\s+(.+)/i,
   ];
 
