@@ -64,6 +64,43 @@ async function archiveOldMemory(userId, guildId, memoryData) {
 
 // ── Memoria de Chat por Usuario ─────────────────────────────────────────
 
+async function getGlobalConversationMessages(userId, currentChannelId) {
+  if (!db || !userId) return [];
+
+  try {
+    const conversationsSnap = await db
+      .collection('memoryScopes')
+      .doc('global')
+      .collection('conversations')
+      .get();
+
+    const perChannel = [];
+    for (const channelDoc of conversationsSnap.docs) {
+      const userDoc = await channelDoc.ref.collection('users').doc(userId).get();
+      if (!userDoc.exists) continue;
+      const messages = userDoc.data()?.messages || [];
+      for (const message of messages.slice(-12)) {
+        perChannel.push({
+          ...message,
+          _memoryChannelId: channelDoc.id,
+          _currentChannelBoost: channelDoc.id === (currentChannelId || 'direct') ? 1 : 0,
+        });
+      }
+    }
+
+    return perChannel
+      .sort((a, b) => {
+        const at = new Date(a.createdAt || 0).getTime();
+        const bt = new Date(b.createdAt || 0).getTime();
+        return at - bt;
+      })
+      .slice(-60);
+  } catch (err) {
+    console.error('[memory] Error agregando memoria global:', err.message);
+    return [];
+  }
+}
+
 export async function getUserMemory(userId, guildId, mode, channelId) {
   if (mode === 'off') return { messages: [], summary: '', facts: [] };
 
@@ -111,8 +148,25 @@ export async function getUserMemory(userId, guildId, mode, channelId) {
     } catch { /* sin topics aún */ }
   }
 
+  let messages = messagesData.messages || [];
+  if (mode === 'global') {
+    const globalMessages = await getGlobalConversationMessages(userId, channelId);
+    if (globalMessages.length > 0) {
+      const seen = new Set();
+      messages = [...globalMessages, ...messages]
+        .filter(m => {
+          const key = `${m.role}|${m.createdAt || ''}|${String(m.content || '').slice(0, 120)}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime())
+        .slice(-80);
+    }
+  }
+
   return {
-    messages: messagesData.messages || [],
+    messages,
     facts: allFacts,
     summary: factsData.summary || '',
     isGlobal: mode === 'global',
@@ -504,7 +558,9 @@ export async function saveUserIdentity(userId, data) {
     const mergedFacts = [...(existing.facts || []), ...newFacts].slice(-30);
     const updated = {
       discordId: userId,
-      names: (data.names || []).filter(Boolean).slice(-5), // Solo los nombres actuales
+      names: (data.names || []).filter(Boolean).length
+        ? (data.names || []).filter(Boolean).slice(-5)
+        : (existing.names || []).slice(-5),
       nicknames: mergedNicks.slice(-20),
       facts: mergedFacts,
       updatedAt: new Date().toISOString(),

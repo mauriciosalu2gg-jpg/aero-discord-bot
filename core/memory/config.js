@@ -1,4 +1,4 @@
-import { getCached, setCached } from '../cache/firebaseCache.js';
+import { flushCached, getCached, setCached } from '../cache/firebaseCache.js';
 
 const DEFAULT_CONFIG = {
   mode: 'local', // 'off', 'local', 'global'
@@ -28,6 +28,7 @@ export async function getUserMemoryConfig(userId) {
 export async function setUserMemoryConfig(userId, configData) {
   const docPath = `users/${userId}/config/memory`;
   setCached(docPath, configData);
+  await flushCached(docPath);
 }
 
 /**

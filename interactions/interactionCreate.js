@@ -17,7 +17,7 @@ export async function handleInteraction(interaction) {
   }
 
   try {
-    if (cmd === 'ai') {
+    if (cmd === 'ai' || cmd === 'ia') {
       await handleAiCommand(interaction);
     } else if (cmd === 'moderacion') {
       await handleModerationCommand(interaction);

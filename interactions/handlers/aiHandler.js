@@ -12,6 +12,7 @@ export async function handleAiCommand(interaction) {
     const imaginar = interaction.options.getString('imaginar');
     const limpiarMemoria = interaction.options.getBoolean('limpiar_memoria');
     const modoMemoria = interaction.options.getString('modo_memoria');
+    const memoriaGlobal = interaction.options.getBoolean('memoria_global');
     const editarPersonalidad = interaction.options.getString('editar_personalidad');
     const verPersonalidad = interaction.options.getBoolean('ver_personalidad');
     const ptsResetUser = interaction.options.getUser('pts_reset');
@@ -53,6 +54,10 @@ export async function handleAiCommand(interaction) {
       await handleMemoria(interaction, 'modo', modoMemoria);
       results.push(`✅ Modo de memoria cambiado a **${modoMemoria}**.`);
     }
+    if (memoriaGlobal) {
+      await handleMemoria(interaction, 'modo', 'global');
+      results.push('✅ Memoria global activada. Ahora puedo usar recuerdos compartidos entre servidores.');
+    }
     if (editarPersonalidad) {
       await handlePersonalidad(interaction, 'editar', editarPersonalidad);
       results.push(`✅ Personalidad editada: te llamaré **${editarPersonalidad}**.`);
@@ -66,7 +71,7 @@ export async function handleAiCommand(interaction) {
     }
     
     // Si no enviaron opciones, mostramos el estado por defecto
-    if (!proveedor && !estado && !imaginar && !limpiarMemoria && !modoMemoria && !editarPersonalidad && !verPersonalidad && !ptsResetUser) {
+    if (!proveedor && !estado && !imaginar && !limpiarMemoria && !modoMemoria && !memoriaGlobal && !editarPersonalidad && !verPersonalidad && !ptsResetUser) {
       await handleEstado(interaction);
     }
   } catch (err) {
@@ -76,4 +81,3 @@ export async function handleAiCommand(interaction) {
 }
 
 export default { handleAiCommand };
-

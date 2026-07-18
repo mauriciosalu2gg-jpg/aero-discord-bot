@@ -38,6 +38,11 @@ export const commandDefinitions = [
       .setRequired(false)
       .addChoices({ name: 'Local (Por servidor)', value: 'local' }, { name: 'Global (Compartida)', value: 'global' })
     )
+    .addBooleanOption(opt => opt
+      .setName('memoria_global')
+      .setDescription('Activa memoria global compartida entre servidores')
+      .setRequired(false)
+    )
     .addStringOption(opt => opt
       .setName('editar_personalidad')
       .setDescription('Dile a la IA cómo quieres que te llame')
@@ -51,6 +56,15 @@ export const commandDefinitions = [
     .addUserOption(opt => opt
       .setName('pts_reset')
       .setDescription('Resetear puntos de moderación de un usuario (Solo Owners)')
+      .setRequired(false)
+    ),
+
+  new SlashCommandBuilder()
+    .setName('ia')
+    .setDescription('Atajo de memoria para la IA')
+    .addBooleanOption(opt => opt
+      .setName('memoria_global')
+      .setDescription('Activa memoria global compartida entre servidores')
       .setRequired(false)
     ),
   
