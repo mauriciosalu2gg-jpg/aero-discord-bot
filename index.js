@@ -771,6 +771,11 @@ client.on('messageCreate', async (message) => {
     if (thinkingInterval) clearInterval(thinkingInterval);
     const thinkingTime = formatThinkingTime(Date.now() - thinkingStart);
 
+    let pingPrefix = '';
+    if (thinkingMsg && message.channel.lastMessageId !== thinkingMsg.id) {
+      pingPrefix = `<@${message.author.id}> `;
+    }
+
     // 8. Fragmentar la respuesta como escribe una persona real
     const parts = splitHumanized(response.text, moodInfo);
     let firstMessageEdited = false;
@@ -783,7 +788,7 @@ client.on('messageCreate', async (message) => {
         const chunk = chunks[j];
         
         if (!firstMessageEdited && thinkingMsg) {
-          await thinkingMsg.edit(`${chunk}\n-# ${EMOJIS.thinking} *Pensó por ${thinkingTime}*`).catch(() => null);
+          await thinkingMsg.edit(`${pingPrefix}${chunk}\n-# ${EMOJIS.thinking} *Pensó por ${thinkingTime}*`).catch(() => null);
           firstMessageEdited = true;
         } else {
           await message.channel.send(chunk);
