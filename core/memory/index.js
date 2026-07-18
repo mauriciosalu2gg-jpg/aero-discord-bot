@@ -102,10 +102,21 @@ export async function getUserMemory(userId, guildId, mode, channelId) {
     }
   }
 
+  let topics = [];
+  if (mode === 'global') {
+    try {
+      const tPath = topicsPath(userId);
+      const data = await getCached(tPath, { topics: [] });
+      topics = data.topics || [];
+    } catch { /* sin topics aún */ }
+  }
+
   return {
     messages: messagesData.messages || [],
     facts: allFacts,
     summary: factsData.summary || '',
+    isGlobal: mode === 'global',
+    ...(mode === 'global' ? { topics } : {})
   };
 }
 
@@ -485,7 +496,12 @@ export async function saveUserIdentity(userId, data) {
     // Los nombres actuales REEMPLAZAN a los anteriores (para reflejar cambios de username)
     // Los nicknames se acumulan (son apodos que la gente le da)
     const mergedNicks = [...new Set([...(existing.nicknames || []), ...(data.nicknames || [])])];
-    const mergedFacts = [...(existing.facts || []), ...(data.facts || [])].slice(-30);
+    
+    // Añadir hechos asegurando no duplicados
+    const newFacts = (data.facts || []).filter(nf => 
+      !(existing.facts || []).some(ef => ef.toLowerCase() === nf.toLowerCase())
+    );
+    const mergedFacts = [...(existing.facts || []), ...newFacts].slice(-30);
     const updated = {
       discordId: userId,
       names: (data.names || []).filter(Boolean).slice(-5), // Solo los nombres actuales
@@ -508,10 +524,24 @@ export async function getUserIdentity(userId) {
   } catch { return null; }
 }
 
-// Busca identidades por nombre o apodo (búsqueda en caché local)
+// Busca identidades por nombre, apodo o ID (búsqueda en caché local)
 export async function findIdentityByName(name, guildUserIds = []) {
   const needle = (name || '').toLowerCase().trim();
-  if (!needle || needle.length < 2) return null;
+  if (!needle) return null;
+
+  // Extraer ID si el nombre contiene un ID de 17-19 dígitos
+  const idMatch = needle.match(/\b(\d{17,19})\b/);
+  if (idMatch) {
+    const extractedId = idMatch[1];
+    try {
+      const identity = await getCached(identityPath(extractedId), null);
+      if (identity) {
+        return { userId: extractedId, identity };
+      }
+    } catch { /* silencioso */ }
+  }
+
+  if (needle.length < 2) return null;
   for (const uid of guildUserIds) {
     try {
       const identity = await getCached(identityPath(uid), null);

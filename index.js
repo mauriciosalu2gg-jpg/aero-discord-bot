@@ -699,8 +699,13 @@ client.on('messageCreate', async (message) => {
     try {
       const { getUserIdentity } = await import('./core/memory/index.js');
       const mentionedUsers = [...message.mentions.users.values()];
-      if (mentionedUsers.length > 0) {
-        const identityContext = [];
+      
+      const idMatches = content.match(/\b(id:\s*)?(\d{17,19})\b/gi) || [];
+      const extractedIds = [...new Set(idMatches.map(m => m.match(/\d{17,19}/)[0]))];
+      
+      const identityContext = [];
+      
+      if (mentionedUsers.length > 0 || extractedIds.length > 0) {
         for (const mu of mentionedUsers.slice(0, 3)) {
           const identity = await getUserIdentity(mu.id);
           if (identity && (identity.names?.length || identity.facts?.length)) {
@@ -709,6 +714,18 @@ client.on('messageCreate', async (message) => {
             identityContext.push(`Usuario @${mu.username} (conocido como: ${names}): ${facts}`);
           }
         }
+        
+        for (const extId of extractedIds.slice(0, 3)) {
+          if (mentionedUsers.some(mu => mu.id === extId)) continue;
+          const identity = await getUserIdentity(extId);
+          if (identity && (identity.names?.length || identity.facts?.length)) {
+            const names = [...(identity.names || []), ...(identity.nicknames || [])].join(', ');
+            const facts = (identity.facts || []).slice(-5).join('; ');
+            const display = identity.names?.[0] || extId;
+            identityContext.push(`Usuario ${display} (ID: ${extId}, conocido como: ${names}): ${facts}`);
+          }
+        }
+        
         if (identityContext.length > 0) {
           summaryForAI += `\n\nIDENTIDADES CONOCIDAS:\n${identityContext.join('\n')}`;
         }
@@ -773,6 +790,7 @@ client.on('messageCreate', async (message) => {
       isOwner: context.isOwnerMessage,
       isSubCreator: isSubCreator(message.author),
       memorySummary: conversationSummary,
+      isGlobal: memory.isGlobal,
       userProfile: formatProfileForPrompt(userConfig.profile),
       webContext,
       guild: message.guild,
