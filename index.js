@@ -30,6 +30,16 @@ const PORT = process.env.PORT || 3000;
 const startTime = Date.now();
 let lastAIResponse = { provider: 'ninguno', model: 'ninguno' };
 
+// Emojis del Memory Engine - Edita las IDs con las de tu servidor si quieres usar emojis animados de Discord
+const EMOJIS = {
+  brain_loading: '<a:brain_loading:ID>'.includes(':ID>') ? '🧠' : '<a:brain_loading:ID>',
+  database: '<a:database:ID>'.includes(':ID>') ? '📚' : '<a:database:ID>',
+  summary: '<a:summary:ID>'.includes(':ID>') ? '📝' : '<a:summary:ID>',
+  done: '<:memory_done:ID>'.includes(':ID>') ? '✅' : '<:memory_done:ID>',
+  warning: '<:warning_icon:ID>'.includes(':ID>') ? '⚠️' : '<:warning_icon:ID>',
+  error: '<:error_icon:ID>'.includes(':ID>') ? '❌' : '<:error_icon:ID>',
+};
+
 // Trackea canales activos (donde el bot ya hablo al menos una vez) para el
 // watcher de inactividad, sin necesidad de guardar esto en DB.
 const trackedChannels = new Map(); // channelId -> { guildId }
@@ -449,6 +459,17 @@ client.on('messageCreate', async (message) => {
   try {
     // 1. Memoria persistente del usuario (Global o Local)
     const userConfig = await getUserMemoryConfig(message.author.id);
+    
+    // Crear el mensaje de estado inicial (como Claude: Pensando / Recuperando...)
+    let statusMsg = null;
+    if (userConfig.mode !== 'off') {
+      try {
+        statusMsg = await message.channel.send(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria...*`);
+      } catch (err) {
+        console.error('[memory-ui] Error al enviar estado inicial:', err.message);
+      }
+    }
+
     const memory = await getUserMemory(message.author.id, guildId, userConfig.mode, channelId);
     
     // Procesar archivos adjuntos si los hay y extraer enlaces
@@ -476,13 +497,20 @@ client.on('messageCreate', async (message) => {
     }
 
     // Recuperación inteligente: inyectar los TOP 5 temas relevantes
+    let activeTopicLabel = 'charla';
     try {
       const relevantTopics = await getRelevantTopics(message.author.id, content, 5);
       if (relevantTopics.length > 0) {
+        activeTopicLabel = relevantTopics[0].title || 'charla';
         const topicsSummary = relevantTopics
           .map(t => `[${t.title}] ${t.summary}`)
           .join('\n');
         summaryForAI += `\n\nTEMAS ANTERIORES RELEVANTES:\n${topicsSummary}`;
+      }
+      
+      // Actualizar UI: Identificando detalles...
+      if (statusMsg) {
+        await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.database} *Identificando detalles de ${activeTopicLabel.toLowerCase()}...*`).catch(() => null);
       }
     } catch { /* sin topics aún */ }
 
@@ -552,25 +580,41 @@ client.on('messageCreate', async (message) => {
 
     lastAIResponse = { provider: response.provider, model: response.model };
 
-    // 6. Guardar respuesta en memoria persistente
+    // Agregar respuesta del bot a la memoria local antes de guardarla asíncronamente
     memory.messages.push({
       role: 'assistant',
       content: response.text,
       authorName: client.user.username,
       createdAt: new Date().toISOString(),
     });
-    await saveUserMemory(message.author.id, guildId, userConfig.mode, memory, channelId)
-      .then(result => {
-        if (result && result.summarized) {
-          // UI progresiva: enviar estado y borrarlo después de 5s
-          message.channel.send('-# 🧠 Memoria actualizada.')
-            .then(statusMsg => {
-              setTimeout(() => statusMsg.delete().catch(() => {}), 5000);
-            })
-            .catch(() => {});
+
+    // Detectar si el usuario pidió explícitamente recordar algo
+    const explicitRemember = /recuerda|guarda|acuerdate|memoriza|guarda en tu memoria/i.test(content);
+
+    // Guardar respuesta en memoria persistente de forma asíncrona
+    (async () => {
+      try {
+        if (statusMsg) {
+          await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*\n-# ${EMOJIS.summary} *Procesando y actualizando memoria...*`).catch(() => null);
         }
-      })
-      .catch(err => console.error('[memory] Error guardando memoria:', err.message));
+
+        const result = await saveUserMemory(message.author.id, guildId, userConfig.mode, memory, channelId);
+        
+        if (statusMsg) {
+          if (result && (result.summarized || explicitRemember)) {
+            const topicTitle = result.topicClosed?.title || activeTopicLabel;
+            await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*\n-# ${EMOJIS.summary} *Tema [${topicTitle}] resumido y archivado.*\n-# ${EMOJIS.done} **Memory updated**`).catch(() => null);
+          } else {
+            await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*\n-# ${EMOJIS.done} **Listo**`).catch(() => null);
+          }
+        }
+      } catch (err) {
+        console.error('[memory] Error guardando memoria:', err.message);
+        if (statusMsg) {
+          await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.error} *Error al guardar la memoria.*`).catch(() => null);
+        }
+      }
+    })();
 
     if (guildId) config.addTokenUsage(guildId, response.tokens || estimateTokens(response.text));
 
