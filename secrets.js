@@ -21,6 +21,18 @@ const SECRETS = {
     mistral: { apiKey: process.env.MISTRAL_API_KEY || '' },
     cohere: { apiKey: process.env.COHERE_API_KEY || '' },
   },
+
+  memory: {
+    enabled: process.env.MEMORY_ENABLED === 'true',
+    provider: process.env.MEMORY_PROVIDER || 'router',
+    groqKey1: process.env.MEMORY_GROQ_KEY_1 || '',
+    groqKey2: process.env.MEMORY_GROQ_KEY_2 || '',
+    geminiKey: process.env.MEMORY_GEMINI_KEY || '',
+    ollamaUrl: process.env.MEMORY_OLLAMA_URL || 'http://localhost:11434',
+    topicModel: process.env.MEMORY_TOPIC_MODEL || 'llama-3.1-8b',
+    summaryModel: process.env.MEMORY_SUMMARY_MODEL || 'llama-3.3-70b',
+    profileModel: process.env.MEMORY_PROFILE_MODEL || 'gemma-3',
+  },
 };
 
 export { PROVIDER_PRIORITY };
@@ -55,9 +67,14 @@ function getDiscordToken() {
   return SECRETS.discordToken;
 }
 
+function getMemoryConfig() {
+  return SECRETS.memory;
+}
+
 export default {
   getAvailableProviders,
   getActiveProvider,
   getDiscordToken,
+  getMemoryConfig,
   PROVIDER_PRIORITY,
 };
