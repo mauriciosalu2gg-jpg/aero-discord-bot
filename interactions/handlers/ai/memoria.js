@@ -7,7 +7,7 @@ export async function handleMemoria(interaction, action, value) {
 
   if (action === 'limpiar') {
     const config = await getUserMemoryConfig(userId);
-    await resetUserMemory(userId, guildId, config.mode);
+    await resetUserMemory(userId, guildId, config.mode, interaction.channelId);
     return;
   }
 
