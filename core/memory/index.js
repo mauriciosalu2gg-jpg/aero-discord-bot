@@ -36,6 +36,32 @@ function topicStatePath(userId, guildId) {
   return `user_topic_state/${userId}_${guildId || 'direct'}`;
 }
 
+export function archivePath(userId, guildId) {
+  return `memory_archive/${userId}_${guildId || 'global'}`;
+}
+
+async function archiveOldMemory(userId, guildId, memoryData) {
+  try {
+    const aPath = archivePath(userId, guildId);
+    const existing = await getCached(aPath, { archives: [] });
+    const archive = {
+      summary: memoryData.summary || '',
+      facts: (memoryData.facts || []).slice(0, 30),
+      messageCount: (memoryData.messages || []).length,
+      archivedAt: new Date().toISOString(),
+    };
+    existing.archives = [...(existing.archives || []), archive].slice(-5); // max 5 archivos
+    existing.updatedAt = new Date().toISOString();
+    setCached(aPath, existing);
+    flushCached(aPath).catch(() => {});
+    console.log(`[memory] Memoria archivada para ${userId} en ${guildId || 'global'}`);
+    return archive;
+  } catch (err) {
+    console.error('[memory] Error archivando memoria:', err.message);
+    return null;
+  }
+}
+
 // ── Memoria de Chat por Usuario ─────────────────────────────────────────
 
 export async function getUserMemory(userId, guildId, mode, channelId) {
@@ -152,6 +178,7 @@ export async function saveUserMemory(userId, guildId, mode, memoryData, channelI
 
         // Safety: hard cap en 40 mensajes aunque el tema no haya cambiado
         if (memoryData.messages.length > 40) {
+          await archiveOldMemory(userId, guildId, memoryData);
           const result = await summarizeMemoryHistory(memoryData);
           memoryData = result;
           summarized = true;
@@ -162,6 +189,7 @@ export async function saveUserMemory(userId, guildId, mode, memoryData, channelI
       console.error('[memory] Error en Memory Engine topic detection:', err.message);
       // Fallback: usar la regla legacy de 40 mensajes
       if (memoryData.messages.length > 40) {
+        await archiveOldMemory(userId, guildId, memoryData);
         const result = await summarizeMemoryHistory(memoryData);
         memoryData = result;
         summarized = true;
@@ -170,6 +198,7 @@ export async function saveUserMemory(userId, guildId, mode, memoryData, channelI
     }
   } else if (memoryData.messages && memoryData.messages.length > 40) {
     // Memory Engine no disponible → usar regla legacy
+    await archiveOldMemory(userId, guildId, memoryData);
     const result = await summarizeMemoryHistory(memoryData);
     memoryData = result;
     summarized = true;
@@ -385,6 +414,62 @@ export async function syncGuildChannels(guild) {
   }
 }
 
+// ── Referencias de Media en Memoria ────────────────────────────────────
+// Guarda referencias de PDFs, imágenes y links que el usuario comparte.
+// Los links maliciosos se filtran antes de guardar.
+
+// Lista de dominios/patrones sospechosos (blacklist básica)
+const MALICIOUS_PATTERNS = [
+  /bit\.ly\/[a-z0-9]+/i,
+  /tinyurl\.com/i,
+  /grabify\.link/i,
+  /iplogger\./i,
+  /discord\.gift(?!s\.)/i, // discord.gift falso (no discord.gifts oficial)
+  /free-nitro\./i,
+  /steamcommunity\.com\/tradeoffer\/new\//i,
+  /phishing/i,
+];
+
+export function isMaliciousLink(url) {
+  if (!url || typeof url !== 'string') return false;
+  return MALICIOUS_PATTERNS.some(pattern => pattern.test(url));
+}
+
+function mediaPath(userId) {
+  return `user_media/${userId}`;
+}
+
+export async function saveMediaReference(userId, mediaItem) {
+  // mediaItem: { type: 'image'|'pdf'|'link', url, name, description, savedAt }
+  if (!userId || !mediaItem?.url) return;
+  if (isMaliciousLink(mediaItem.url)) {
+    console.warn(`[memory] Link malicioso bloqueado para ${userId}: ${mediaItem.url}`);
+    return { blocked: true };
+  }
+  try {
+    const mPath = mediaPath(userId);
+    const existing = await getCached(mPath, { media: [] });
+    existing.media = [
+      ...(existing.media || []),
+      { ...mediaItem, savedAt: new Date().toISOString() }
+    ].slice(-50); // max 50 referencias
+    existing.updatedAt = new Date().toISOString();
+    setCached(mPath, existing);
+    flushCached(mPath).catch(() => {});
+    return { saved: true };
+  } catch (err) {
+    console.error('[memory] Error guardando media:', err.message);
+  }
+}
+
+export async function getUserMedia(userId) {
+  if (!userId) return [];
+  try {
+    const data = await getCached(mediaPath(userId), { media: [] });
+    return data.media || [];
+  } catch { return []; }
+}
+
 // ── Sistema de Identidades de Usuario ────────────────────────────────────
 // Guarda nombres, apodos e IDs para que el bot recuerde a las personas
 // entre conversaciones aunque cambien de display name.
@@ -397,13 +482,13 @@ export async function saveUserIdentity(userId, data) {
   if (!userId) return;
   try {
     const existing = await getCached(identityPath(userId), { names: [], nicknames: [], facts: [] });
-    // Merge nombres sin duplicados
-    const mergedNames = [...new Set([...(existing.names || []), ...(data.names || [])])];
+    // Los nombres actuales REEMPLAZAN a los anteriores (para reflejar cambios de username)
+    // Los nicknames se acumulan (son apodos que la gente le da)
     const mergedNicks = [...new Set([...(existing.nicknames || []), ...(data.nicknames || [])])];
     const mergedFacts = [...(existing.facts || []), ...(data.facts || [])].slice(-30);
     const updated = {
       discordId: userId,
-      names: mergedNames.slice(-10),
+      names: (data.names || []).filter(Boolean).slice(-5), // Solo los nombres actuales
       nicknames: mergedNicks.slice(-20),
       facts: mergedFacts,
       updatedAt: new Date().toISOString(),
@@ -453,4 +538,8 @@ export default {
   saveUserIdentity,
   getUserIdentity,
   findIdentityByName,
+  archivePath,
+  isMaliciousLink,
+  saveMediaReference,
+  getUserMedia,
 };

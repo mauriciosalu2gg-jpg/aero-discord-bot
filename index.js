@@ -493,16 +493,18 @@ client.on('messageCreate', async (message) => {
   const content = message.content.replace(/<@!?\d+>/g, '').trim();
   if (!content) return;
 
-  // Auto-actualizar identidad del usuario que habla
+  // Auto-actualizar identidad del usuario (detecta cambios de username/displayName)
   (async () => {
     try {
       const { saveUserIdentity } = await import('./core/memory/index.js');
+      const currentNames = [
+        message.author.username,
+        message.author.globalName,
+        message.member?.displayName,
+      ].filter(Boolean);
       await saveUserIdentity(message.author.id, {
-        names: [
-          message.author.username,
-          message.author.globalName,
-          message.member?.displayName,
-        ].filter(Boolean),
+        discordId: message.author.id,
+        names: currentNames,
         nicknames: [],
         facts: [],
       });
@@ -627,10 +629,11 @@ client.on('messageCreate', async (message) => {
           const finalLabel = mode === 'save' ? 'Memoria actualizada' : 'Memoria recuperada';
           await memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory.*\n-# ${phaseEmoji} *${phaseLabel}.*${stepsText}\n-# ${EMOJIS.done} *${finalLabel}*`).catch(() => null);
 
-          // Compactar a los 3 minutos para no saturar el canal
+          // Compactar entre 3 y 3.5 minutos (aleatorio para que se sienta natural)
+          const compactDelay = (3 * 60 * 1000) + Math.floor(Math.random() * 30000); // 3min + 0-30seg
           setTimeout(async () => {
             if (memoryMsg) await memoryMsg.edit(`-# ${EMOJIS.done} *${finalLabel}*`).catch(() => null);
-          }, 3 * 60 * 1000);
+          }, compactDelay);
 
         } catch (err) {
           console.warn('[memory-ui] Error en UI de memoria explícita:', err.message);
@@ -653,6 +656,34 @@ client.on('messageCreate', async (message) => {
 
     urlText = await processUrls(content);
     if (urlText) finalContent += `\n${urlText}`;
+
+    // Guardar referencias de media en memoria silenciosamente
+    (async () => {
+      try {
+        const { saveMediaReference } = await import('./core/memory/index.js');
+        // Guardar attachments
+        for (const attachment of message.attachments.values()) {
+          const type = attachment.contentType?.includes('image') ? 'image'
+            : attachment.contentType?.includes('pdf') ? 'pdf' : 'file';
+          await saveMediaReference(message.author.id, {
+            type,
+            url: attachment.url,
+            name: attachment.name,
+            description: `${type} compartido en el chat`,
+          });
+        }
+        // Guardar links del mensaje (si los hay y no son maliciosos)
+        const urlMatches = content.match(/(https?:\/\/[^\s]+)/g) || [];
+        for (const url of urlMatches.slice(0, 3)) {
+          await saveMediaReference(message.author.id, {
+            type: 'link',
+            url,
+            name: url,
+            description: 'link compartido en el chat',
+          });
+        }
+      } catch { /* silencioso */ }
+    })();
 
     // Los recuerdos largos no son instrucciones: se presentan como contexto
     const rememberedFacts = (memory.facts || [])
