@@ -49,6 +49,38 @@ const userRateLimits = new Map();
 const MAX_REQUESTS = 5; // Peticiones máximas permitidas
 const RATE_LIMIT_WINDOW = 60000; // En un lapso de 1 minuto (60000 ms)
 
+function generateDynamicThoughts(content) {
+  const query = content.toLowerCase();
+  const thoughts = [];
+
+  if (query.includes('error') || query.includes('bug') || query.includes('fallo') || query.includes('crashea')) {
+    thoughts.push('Analizando traza del error detectado');
+    thoughts.push('Rastreando logs de Firebase y base de datos');
+    thoughts.push('Buscando discrepancias en el flujo del código');
+  } else if (query.includes('código') || query.includes('code') || query.includes('program') || query.includes('function') || query.includes('js')) {
+    thoughts.push('Analizando estructura y sintaxis del código');
+    thoughts.push('Comparando algoritmos en la memoria histórica');
+    thoughts.push('Determinando dependencias y módulos del sistema');
+  } else if (query.includes('hardware') || query.includes('ventilador') || query.includes('temperatura') || query.includes('cpu') || query.includes('pc') || query.includes('ram')) {
+    thoughts.push('Clarificando ajustes de ventiladores');
+    thoughts.push('Revisando configuraciones de hardware');
+    thoughts.push('Determinando curvas de ventilador');
+  } else if (query.includes('servidor') || query.includes('render') || query.includes('deploy') || query.includes('hosting')) {
+    thoughts.push('Verificando estado del servidor en Render');
+    thoughts.push('Validando variables de entorno activas');
+    thoughts.push('Monitoreando logs de ejecución');
+  } else if (query.includes('bot') || query.includes('discord') || query.includes('emoji')) {
+    thoughts.push('Revisando API de Discord y WebSocket');
+    thoughts.push('Verificando permisos y roles de servidor');
+    thoughts.push('Cargando personalización y emojis');
+  } else {
+    thoughts.push('Clarificando intención del mensaje');
+    thoughts.push('Buscando conceptos relacionados');
+    thoughts.push('Estructurando respuesta conversacional');
+  }
+  return thoughts;
+}
+
 function handleRateLimit(userId) {
   const now = Date.now();
   if (!userRateLimits.has(userId)) userRateLimits.set(userId, { times: [], warned: false });
@@ -465,25 +497,42 @@ client.on('messageCreate', async (message) => {
     let uiState = 'RECOVERING'; // 'RECOVERING' | 'SEARCHING' | 'SAVING' | 'DONE'
     let activeTopicLabel = 'charla';
     let uiInterval = null;
+    const dynamicThoughts = generateDynamicThoughts(content);
 
     if (userConfig.mode !== 'off') {
       try {
         statusMsg = await message.channel.send(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria...*`);
         
         let dotCount = 3;
+        let stepIndex = 0;
+        
         uiInterval = setInterval(() => {
           if (uiState === 'DONE') {
             clearInterval(uiInterval);
             return;
           }
+          
           dotCount = (dotCount % 3) + 1; // 1, 2, 3
           const dots = '.'.repeat(dotCount);
+          
+          // Crear la lista acumulativa de pensamientos dinámicos
+          let thoughtsList = '';
+          const currentThoughtsCount = Math.min(stepIndex, dynamicThoughts.length);
+          for (let i = 0; i < currentThoughtsCount; i++) {
+            thoughtsList += `\n-# • *${dynamicThoughts[i]}*`;
+          }
+
           if (uiState === 'RECOVERING') {
-            statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria${dots}*`).catch(() => null);
+            statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria${dots}*${thoughtsList}`).catch(() => null);
           } else if (uiState === 'SEARCHING') {
-            statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Identificando detalles de ${activeTopicLabel.toLowerCase()}${dots}*`).catch(() => null);
+            statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Identificando detalles de ${activeTopicLabel.toLowerCase()}${dots}*${thoughtsList}`).catch(() => null);
           } else if (uiState === 'SAVING') {
-            statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*\n-# ${EMOJIS.summary} *Procesando y guardando nueva información${dots}*`).catch(() => null);
+            statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*${thoughtsList}\n-# ${EMOJIS.summary} *Procesando y guardando nueva información${dots}*`).catch(() => null);
+          }
+          
+          // Avanzar a la siguiente línea de pensamiento cada 2 segundos de forma progresiva
+          if (stepIndex < dynamicThoughts.length && Math.random() > 0.4) {
+            stepIndex++;
           }
         }, 1000);
       } catch (err) {
@@ -619,12 +668,18 @@ client.on('messageCreate', async (message) => {
         uiState = 'DONE';
         if (uiInterval) clearInterval(uiInterval);
 
+        // Construir la lista final de pensamientos completados para la UI estática permanente
+        let thoughtsList = '';
+        for (const thought of dynamicThoughts) {
+          thoughtsList += `\n-# • *${thought}*`;
+        }
+
         if (statusMsg) {
           if (result && (result.summarized || explicitRemember)) {
             const topicTitle = result.topicClosed?.title || activeTopicLabel;
-            await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*\n-# ${EMOJIS.summary} *Tema [${topicTitle}] resumido y guardado.*\n-# ${EMOJIS.done} **Memory updated**`).catch(() => null);
+            await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*${thoughtsList}\n-# ${EMOJIS.summary} *Tema [${topicTitle}] resumido y guardado.*\n-# ${EMOJIS.done} **Memory updated**`).catch(() => null);
           } else {
-            await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*\n-# ${EMOJIS.done} **Listo**`).catch(() => null);
+            await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*${thoughtsList}\n-# ${EMOJIS.done} **Listo**`).catch(() => null);
           }
         }
       } catch (err) {
