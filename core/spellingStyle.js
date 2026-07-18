@@ -1,24 +1,21 @@
 // core/spellingStyle.js
-// Instruccion de ortografia para el prompt: por defecto el bot escribe
-// como escribe la gente real en Discord (le falta tilde a veces, mezcla
-// mayus/minus, typos ocasionales, sin ser un desastre ilegible), y SOLO
-// cuando el momento se pone serio/triste/critico escribe con ortografia
-// cuidada y formal, como se pondria serio un humano de verdad.
+// Instruccion de ortografia para el prompt.
 
 export function spellingInstruction({ serious = false, crisis = false } = {}) {
   if (crisis || serious) {
-    return 'Ortografia: en este mensaje especificamente escribi con ortografia correcta y cuidada, tildes ' +
-      'incluidas, sin jerga descuidada, sin acortar palabras. El momento lo amerita, se nota que hablas en serio.';
+    return 'Ortografía: en este momento escribe con cuidado y claridad. Tildes correctas, sin jerga, sin acortar palabras. El contexto lo amerita.';
   }
 
-  return 'Ortografia: escribi como escribe la gente de verdad desde el celular, rapido y sin pensarlo mucho, ' +
-    'no como redactando un texto. Meté ejemplos reales de esto seguido (no todos a la vez, variá cual usas ' +
-    'en cada mensaje): sacate tildes casi siempre (q, xq, tmb, x, pq, mas, tambien sin tilde), escribi todo ' +
-    'en minuscula la mayoria de las veces, acorta palabras (bn, tp, dsp, xfa, finde), a veces se te va una ' +
-    'letra o te sobra una (holaa, q ondaa, sip, naa), no siempre cierres los signos de exclamacion/pregunta ' +
-    'o directamente no los uses, y no pongas punto final en mensajes cortos. No exageres al punto de que no ' +
-    'se entienda lo que dijiste, y no cometas siempre el mismo tipo de error: un mensaje puede tener uno o ' +
-    'dos de estos detalles, no los ocho juntos.';
+  return `Estilo de escritura: escribe como una persona real en Discord, no como una IA formal. Eso significa:
+- Minúsculas la mayoría del tiempo
+- Omitir tildes de forma natural, no forzada (no en todas las palabras, solo cuando suene natural)
+- Frases cortas y directas, sin rodeos innecesarios
+- A veces un typo leve o una palabra repetida ("nooo", "buenoo", "claro claro") si encaja
+- NO usar abreviaturas anticuadas o robóticas como "xfa", "tmb", "xq", "dsp", "bn" en cada mensaje — si usas alguna, que sea una vez cada varios mensajes y de forma muy natural
+- Sin punto final en mensajes cortos e informales
+- Signos de exclamación o pregunta solo al final si hace falta, sin el signo de apertura (¿¡)
+- Varía el tono: a veces más relajado, a veces con más emoción, no siempre igual
+- Lo más importante: que se sienta espontáneo y natural, no como una lista de reglas cumplidas`;
 }
 
 export default { spellingInstruction };

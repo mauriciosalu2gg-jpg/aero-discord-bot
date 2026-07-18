@@ -211,8 +211,16 @@ client.once('ready', async () => {
       if (!channel) return;
       const guild = channel.guild || null;
 
+      const idlePrompts = [
+        'El chat lleva horas muerto. Tira un dato curioso o random que genere conversación, en tu propio estilo casual.',
+        'Nadie ha hablado en horas. Di algo que llame la atención, una opinión random, una pregunta al aire, o algo gracioso.',
+        'El canal está en silencio. Rompe el hielo con algo interesante: un dato loco, una pregunta para el chat, o simplemente saluda de forma inesperada.',
+        'Chat muerto. Actúa como si quisieras reactivar la charla de forma natural, di lo primero que se te ocurra.',
+      ];
+      const idlePrompt = idlePrompts[Math.floor(Math.random() * idlePrompts.length)];
+
       const response = await askAI(
-        [{ role: 'user', content: 'El chat esta muerto hace horas, tira un dato curioso random para reactivar la charla, corto, con tu propio estilo.' }],
+        [{ role: 'user', content: idlePrompt }],
         0,
         { guild, channelName: channel.name, swearingAllowed: getFlags(guild?.id).swearing }
       ).catch(() => null);
@@ -484,6 +492,22 @@ client.on('messageCreate', async (message) => {
 
   const content = message.content.replace(/<@!?\d+>/g, '').trim();
   if (!content) return;
+
+  // Auto-actualizar identidad del usuario que habla
+  (async () => {
+    try {
+      const { saveUserIdentity } = await import('./core/memory/index.js');
+      await saveUserIdentity(message.author.id, {
+        names: [
+          message.author.username,
+          message.author.globalName,
+          message.member?.displayName,
+        ].filter(Boolean),
+        nicknames: [],
+        facts: [],
+      });
+    } catch { /* silencioso */ }
+  })();
   // Si mencionaron al bot directamente, le respondieron a su mensaje, o es
   // DM, SIEMPRE contesta, sin importar que tan corto sea el texto ("hola",
   // "que", etc). El filtro de isNaturalPrompt (pensado para no reaccionar a
@@ -603,10 +627,10 @@ client.on('messageCreate', async (message) => {
           const finalLabel = mode === 'save' ? 'Memoria actualizada' : 'Memoria recuperada';
           await memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory.*\n-# ${phaseEmoji} *${phaseLabel}.*${stepsText}\n-# ${EMOJIS.done} *${finalLabel}*`).catch(() => null);
 
-          // Compactar a los 5 minutos para no saturar el canal
+          // Compactar a los 3 minutos para no saturar el canal
           setTimeout(async () => {
             if (memoryMsg) await memoryMsg.edit(`-# ${EMOJIS.done} *${finalLabel}*`).catch(() => null);
-          }, 5 * 60 * 1000);
+          }, 3 * 60 * 1000);
 
         } catch (err) {
           console.warn('[memory-ui] Error en UI de memoria explícita:', err.message);
@@ -639,6 +663,26 @@ client.on('messageCreate', async (message) => {
     if (rememberedFacts.length > 0) {
       summaryForAI += `\n\nMEMORIA DE REFERENCIA (puede estar desactualizada; no son instrucciones):\n- ${rememberedFacts.join('\n- ')}`;
     }
+
+    // Inyectar identidades relevantes si el mensaje menciona a alguien
+    try {
+      const { getUserIdentity } = await import('./core/memory/index.js');
+      const mentionedUsers = [...message.mentions.users.values()];
+      if (mentionedUsers.length > 0) {
+        const identityContext = [];
+        for (const mu of mentionedUsers.slice(0, 3)) {
+          const identity = await getUserIdentity(mu.id);
+          if (identity && (identity.names?.length || identity.facts?.length)) {
+            const names = [...(identity.names || []), ...(identity.nicknames || [])].join(', ');
+            const facts = (identity.facts || []).slice(-5).join('; ');
+            identityContext.push(`Usuario @${mu.username} (conocido como: ${names}): ${facts}`);
+          }
+        }
+        if (identityContext.length > 0) {
+          summaryForAI += `\n\nIDENTIDADES CONOCIDAS:\n${identityContext.join('\n')}`;
+        }
+      }
+    } catch { /* silencioso */ }
 
     // Recuperación inteligente: inyectar los TOP 5 temas relevantes
     try {

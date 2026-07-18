@@ -265,43 +265,21 @@ export async function getRelevantTopics(userId, query, topN = 5) {
 }
 
 export async function resetUserMemory(userId, guildId, mode, channelId) {
-  if (mode === 'off') return { messages: [], summary: '', facts: [] };
-
+  // Solo limpia la memoria de conversación del servidor (o scope actual)
   const msgPath = legacyConversationPath(userId, guildId, mode, channelId);
   const fPath = legacyFactsPath(userId, guildId, mode);
   const updatedAt = new Date().toISOString();
   setCached(msgPath, { messages: [], updatedAt });
   setCached(fPath, { facts: [], summary: '', updatedAt });
-  
-  const pPath = profilePath(userId);
-  const tPath = topicsPath(userId);
-  const sPath = topicStatePath(userId, guildId);
+  await Promise.all([
+    flushCached(msgPath),
+    flushCached(fPath),
+    // Limpiar también el estado de topics del scope actual
+    deleteCached(topicStatePath(userId, guildId)),
+  ]);
 
-  try {
-    if (typeof deleteCached === 'function') {
-      await Promise.all([
-        deleteCached(pPath), 
-        deleteCached(tPath), 
-        deleteCached(sPath),
-        flushCached(msgPath), 
-        flushCached(fPath)
-      ]);
-    } else {
-      setCached(pPath, null);
-      setCached(tPath, null);
-      setCached(sPath, null);
-      await Promise.all([
-        flushCached(msgPath), 
-        flushCached(fPath),
-        flushCached(pPath), 
-        flushCached(tPath), 
-        flushCached(sPath)
-      ]);
-    }
-  } catch (err) {
-    console.error('[memory] Error limpiando profile/topics:', err.message);
-  }
-
+  // NOTA: user_profiles, user_topics y user_identities son globales
+  // y NO se tocan al limpiar la memoria de un servidor.
   return { messages: [], summary: '', facts: [] };
 }
 
@@ -407,6 +385,61 @@ export async function syncGuildChannels(guild) {
   }
 }
 
+// ── Sistema de Identidades de Usuario ────────────────────────────────────
+// Guarda nombres, apodos e IDs para que el bot recuerde a las personas
+// entre conversaciones aunque cambien de display name.
+
+function identityPath(userId) {
+  return `user_identities/${userId}`;
+}
+
+export async function saveUserIdentity(userId, data) {
+  if (!userId) return;
+  try {
+    const existing = await getCached(identityPath(userId), { names: [], nicknames: [], facts: [] });
+    // Merge nombres sin duplicados
+    const mergedNames = [...new Set([...(existing.names || []), ...(data.names || [])])];
+    const mergedNicks = [...new Set([...(existing.nicknames || []), ...(data.nicknames || [])])];
+    const mergedFacts = [...(existing.facts || []), ...(data.facts || [])].slice(-30);
+    const updated = {
+      discordId: userId,
+      names: mergedNames.slice(-10),
+      nicknames: mergedNicks.slice(-20),
+      facts: mergedFacts,
+      updatedAt: new Date().toISOString(),
+    };
+    setCached(identityPath(userId), updated);
+    flushCached(identityPath(userId)).catch(() => {});
+    return updated;
+  } catch (err) {
+    console.error('[identity] Error guardando identidad:', err.message);
+  }
+}
+
+export async function getUserIdentity(userId) {
+  if (!userId) return null;
+  try {
+    return await getCached(identityPath(userId), null);
+  } catch { return null; }
+}
+
+// Busca identidades por nombre o apodo (búsqueda en caché local)
+export async function findIdentityByName(name, guildUserIds = []) {
+  const needle = (name || '').toLowerCase().trim();
+  if (!needle || needle.length < 2) return null;
+  for (const uid of guildUserIds) {
+    try {
+      const identity = await getCached(identityPath(uid), null);
+      if (!identity) continue;
+      const allNames = [...(identity.names || []), ...(identity.nicknames || [])].map(n => n.toLowerCase());
+      if (allNames.some(n => n.includes(needle) || needle.includes(n))) {
+        return { userId: uid, identity };
+      }
+    } catch { continue; }
+  }
+  return null;
+}
+
 export default {
   getUserMemory,
   saveUserMemory,
@@ -417,4 +450,7 @@ export default {
   addGuildTokenUsage,
   registerGuildLocal,
   syncGuildChannels,
+  saveUserIdentity,
+  getUserIdentity,
+  findIdentityByName,
 };
