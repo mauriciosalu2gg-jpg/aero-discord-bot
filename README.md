@@ -47,3 +47,4 @@ services/
 database/
   firebase.js         # Firebase Admin init
 ```
+# Memory Engine v2 - Dynamic Reasoning v1.0
