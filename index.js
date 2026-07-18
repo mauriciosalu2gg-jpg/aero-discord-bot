@@ -753,22 +753,30 @@ client.on('messageCreate', async (message) => {
     await humanizedTyping(message.channel, thinkingMs);
 
     // ═══════════════════════════════════════════════════════
-    // 💡 Detener "Pensando" → mostrar tiempo transcurrido
-    //    Se hace AQUÍ, justo antes de enviar, para que la
-    //    animación corra durante todo el delay de typing.
+    // 💡 Detener "Pensando" → Editar mensaje con la respuesta
     // ═══════════════════════════════════════════════════════
     if (thinkingInterval) clearInterval(thinkingInterval);
     const thinkingTime = formatThinkingTime(Date.now() - thinkingStart);
-    if (thinkingMsg) {
-      await thinkingMsg.edit(`-# ${EMOJIS.thinking} *Pensó por ${thinkingTime}*`).catch(() => null);
-    }
 
     // 8. Fragmentar la respuesta como escribe una persona real
     const parts = splitHumanized(response.text, moodInfo);
+    let firstMessageEdited = false;
+    
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
       const chunks = part.match(/[\s\S]{1,1900}/g) || ['...'];
-      for (const chunk of chunks) await message.channel.send(chunk);
+      
+      for (let j = 0; j < chunks.length; j++) {
+        const chunk = chunks[j];
+        
+        if (!firstMessageEdited && thinkingMsg) {
+          await thinkingMsg.edit(`${chunk}\n\n-# ${EMOJIS.thinking} *Pensó por ${thinkingTime}*`).catch(() => null);
+          firstMessageEdited = true;
+        } else {
+          await message.channel.send(chunk);
+        }
+      }
+      
       if (i < parts.length - 1) {
         await new Promise(r => setTimeout(r, delayBetweenParts()));
         await message.channel.sendTyping().catch(() => {});
