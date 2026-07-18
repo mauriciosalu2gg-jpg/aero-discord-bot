@@ -25,19 +25,25 @@ import { handleApiKeyQuestion } from './commands/apikey.js';
 import { getActiveProvider, startHealthReporting } from './services/ai/providerHealth.js';
 import { db } from './database/firebase.js';
 import { isBasicModel } from './config/providers.js';
+import { askMemoryEngine, isMemoryEngineAvailable } from './services/ai/memoryRouter.js';
 
 const PORT = process.env.PORT || 3000;
 const startTime = Date.now();
 let lastAIResponse = { provider: 'ninguno', model: 'ninguno' };
 
-// Emojis del Memory Engine - Edita las IDs con las de tu servidor si quieres usar emojis animados de Discord
+// ═══════════════════════════════════════════════════════════════
+// 🎨 EMOJIS — Application Emojis del portal de Novarito.
+//    Subidos en: Discord Developer Portal > Novarito > Emojis
+//    Fallback unicode automático si el emoji no está disponible.
+// ═══════════════════════════════════════════════════════════════
 const EMOJIS = {
-  brain_loading: '<a:brain_loading:ID>'.includes(':ID>') ? '🧠' : '<a:brain_loading:ID>',
-  database: '<a:database:ID>'.includes(':ID>') ? '📚' : '<a:database:ID>',
-  summary: '<a:summary:ID>'.includes(':ID>') ? '📝' : '<a:summary:ID>',
-  done: '<:memory_done:ID>'.includes(':ID>') ? '✅' : '<:memory_done:ID>',
-  warning: '<:warning_icon:ID>'.includes(':ID>') ? '⚠️' : '<:warning_icon:ID>',
-  error: '<:error_icon:ID>'.includes(':ID>') ? '❌' : '<:error_icon:ID>',
+  thinking: '<:pensar:1527960192787025920>',      // 💡  Generando respuesta (Chat Engine)
+  memory:   '<:servidor:1527959988184682506>',    // 📚  Memory Engine activo
+  recall:   '<:hojita:1527960400975630436>',      // 🧠  Recuperando desde memoria
+  save:     '<:hojita:1527960400975630436>',      // 📝  Guardando en memoria
+  done:     '<:aceptar:1527959750443012187>',     // ✅  Operación completada
+  error:    '<:equis:1527958663485198386>',       // ❌  Error
+  warning:  '<:advertencia:1527958443338033296>', // ⚠️  Advertencia
 };
 
 // Trackea canales activos (donde el bot ya hablo al menos una vez) para el
@@ -49,36 +55,57 @@ const userRateLimits = new Map();
 const MAX_REQUESTS = 5; // Peticiones máximas permitidas
 const RATE_LIMIT_WINDOW = 60000; // En un lapso de 1 minuto (60000 ms)
 
-function generateDynamicThoughts(content) {
-  const query = content.toLowerCase();
-  const thoughts = [];
+/** Formatea ms a texto: "3 segundos", "2 minutos", "1 hora" */
+function formatThinkingTime(ms) {
+  const secs = Math.round(ms / 1000);
+  if (secs < 60) return `${secs} segundo${secs !== 1 ? 's' : ''}`;
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins} minuto${mins !== 1 ? 's' : ''}`;
+  const hrs = Math.round(mins / 60);
+  return `${hrs} hora${hrs !== 1 ? 's' : ''}`;
+}
 
-  if (query.includes('error') || query.includes('bug') || query.includes('fallo') || query.includes('crashea')) {
-    thoughts.push('Analizando traza del error detectado');
-    thoughts.push('Rastreando logs de Firebase y base de datos');
-    thoughts.push('Buscando discrepancias en el flujo del código');
-  } else if (query.includes('código') || query.includes('code') || query.includes('program') || query.includes('function') || query.includes('js')) {
-    thoughts.push('Analizando estructura y sintaxis del código');
-    thoughts.push('Comparando algoritmos en la memoria histórica');
-    thoughts.push('Determinando dependencias y módulos del sistema');
-  } else if (query.includes('hardware') || query.includes('ventilador') || query.includes('temperatura') || query.includes('cpu') || query.includes('pc') || query.includes('ram')) {
-    thoughts.push('Clarificando ajustes de ventiladores');
-    thoughts.push('Revisando configuraciones de hardware');
-    thoughts.push('Determinando curvas de ventilador');
-  } else if (query.includes('servidor') || query.includes('render') || query.includes('deploy') || query.includes('hosting')) {
-    thoughts.push('Verificando estado del servidor en Render');
-    thoughts.push('Validando variables de entorno activas');
-    thoughts.push('Monitoreando logs de ejecución');
-  } else if (query.includes('bot') || query.includes('discord') || query.includes('emoji')) {
-    thoughts.push('Revisando API de Discord y WebSocket');
-    thoughts.push('Verificando permisos y roles de servidor');
-    thoughts.push('Cargando personalización y emojis');
-  } else {
-    thoughts.push('Clarificando intención del mensaje');
-    thoughts.push('Buscando conceptos relacionados');
-    thoughts.push('Estructurando respuesta conversacional');
+/**
+ * Detecta si el usuario interactúa explícitamente con la memoria.
+ * isSave: quiere guardar algo  |  isRecall: quiere recuperar algo
+ */
+function detectMemoryIntent(content) {
+  const isSave   = /recuerda\s+(que|esto|eso)|guarda\s+(esto|eso|en tu memoria)|memoriza|no olvides/i.test(content);
+  const isRecall = /qu[eé]\s+recuerdas|qu[eé]\s+sabes de m[ií]|busca en (tu|mi) memoria|qu[eé]\s+guardaste|tienes\s+memoria/i.test(content);
+  return { isSave, isRecall, isExplicit: isSave || isRecall };
+}
+
+/**
+ * Genera pasos de razonamiento dinámicos via Memory Engine (IA).
+ * Fallback a lista genérica si el Memory Engine no está disponible.
+ */
+async function generateMemoryStepsAI(content, mode) {
+  const fallbackSave = [
+    'Analizando información importante',
+    'Extrayendo datos relevantes del usuario',
+    'Creando resumen compacto',
+    'Actualizando memoria a largo plazo',
+  ];
+  const fallbackRecall = [
+    'Revisando conversaciones relacionadas',
+    'Buscando preferencias conocidas',
+    'Comparando información previa',
+    'Identificando datos importantes',
+    'Preparando contexto relevante',
+  ];
+  if (!isMemoryEngineAvailable()) return mode === 'save' ? fallbackSave : fallbackRecall;
+
+  const prompt = mode === 'save'
+    ? `El usuario dijo: "${content.slice(0, 200)}". Genera de 3 a 5 pasos muy breves de lo que un asistente haría para guardar esa información en su memoria. Solo los pasos, uno por línea, sin viñetas ni números.`
+    : `El usuario dijo: "${content.slice(0, 200)}". Genera de 4 a 6 pasos breves de lo que un asistente haría para recuperar información relevante de su memoria. Solo los pasos, uno por línea, sin viñetas ni números.`;
+
+  try {
+    const res = await askMemoryEngine('topic', [{ role: 'user', content: prompt }], 0.2);
+    const steps = res.split('\n').map(s => s.trim().replace(/^[-*•\d\.\s]+/, '').slice(0, 90)).filter(s => s.length > 4).slice(0, 20);
+    return steps.length >= 2 ? steps : (mode === 'save' ? fallbackSave : fallbackRecall);
+  } catch {
+    return mode === 'save' ? fallbackSave : fallbackRecall;
   }
-  return thoughts;
 }
 
 function handleRateLimit(userId) {
@@ -489,55 +516,88 @@ client.on('messageCreate', async (message) => {
   // ----------------------------------
 
   try {
-    // 1. Memoria persistente del usuario (Global o Local)
+    // 1. Memoria persistente del usuario
     const userConfig = await getUserMemoryConfig(message.author.id);
-    
-    // Crear el mensaje de estado inicial (como Claude: Pensando / Recuperando...)
-    let statusMsg = null;
-    let uiState = 'RECOVERING'; // 'RECOVERING' | 'SEARCHING' | 'SAVING' | 'DONE'
+    const memoryIntent = detectMemoryIntent(content);
+
+    // ═══════════════════════════════════════════════════════
+    // 💡 CHAT ENGINE — Estado "Pensando" con puntos animados
+    //    Solo representa la generación de respuesta.
+    //    Separado completamente del Memory Engine.
+    // ═══════════════════════════════════════════════════════
+    let thinkingMsg = null;
+    let thinkingInterval = null;
+    const thinkingStart = Date.now();
+
+    try {
+      thinkingMsg = await message.channel.send(`-# ${EMOJIS.thinking} *Pensando*`);
+      let dotCount = 0;
+      thinkingInterval = setInterval(() => {
+        dotCount = (dotCount % 3) + 1;
+        thinkingMsg.edit(`-# ${EMOJIS.thinking} *Pensando${'.'.repeat(dotCount)}*`).catch(() => null);
+      }, 700);
+    } catch (err) {
+      console.warn('[ui] No se pudo enviar estado de pensamiento:', err.message);
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // 📚 MEMORY ENGINE — Solo cuando el usuario lo pide
+    //    La memoria automática es SILENCIOSA.
+    // ═══════════════════════════════════════════════════════
+    let memoryMsg = null;
     let activeTopicLabel = 'charla';
-    let uiInterval = null;
-    const dynamicThoughts = generateDynamicThoughts(content);
 
-    if (userConfig.mode !== 'off') {
-      try {
-        statusMsg = await message.channel.send(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria...*`);
-        
-        let dotCount = 3;
-        let stepIndex = 0;
-        
-        uiInterval = setInterval(() => {
-          if (uiState === 'DONE') {
-            clearInterval(uiInterval);
-            return;
-          }
-          
-          dotCount = (dotCount % 3) + 1; // 1, 2, 3
-          const dots = '.'.repeat(dotCount);
-          
-          // Crear la lista acumulativa de pensamientos dinámicos
-          let thoughtsList = '';
-          const currentThoughtsCount = Math.min(stepIndex, dynamicThoughts.length);
-          for (let i = 0; i < currentThoughtsCount; i++) {
-            thoughtsList += `\n-# • *${dynamicThoughts[i]}*`;
+    if (memoryIntent.isExplicit && userConfig.mode !== 'off') {
+      (async () => {
+        try {
+          // Fase 1: Managing memory...
+          memoryMsg = await message.channel.send(`-# ${EMOJIS.memory} *Managing memory*`);
+          let mDot = 0;
+          const mInt = setInterval(() => {
+            mDot = (mDot % 3) + 1;
+            memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory${'.'.repeat(mDot)}*`).catch(() => null);
+          }, 700);
+
+          await new Promise(r => setTimeout(r, 900));
+          clearInterval(mInt);
+
+          // Fase 2: acción específica (guardar o recuperar)
+          const mode = memoryIntent.isSave ? 'save' : 'recall';
+          const phaseLabel = mode === 'save' ? 'Guardando memoria' : 'Recuperando memoria';
+          const phaseEmoji = mode === 'save' ? EMOJIS.save : EMOJIS.recall;
+
+          let mDot2 = 0;
+          const mInt2 = setInterval(() => {
+            mDot2 = (mDot2 % 3) + 1;
+            memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory.*\n-# ${phaseEmoji} *${phaseLabel}${'.'.repeat(mDot2)}*`).catch(() => null);
+          }, 700);
+
+          // Generar pasos dinámicos via IA
+          const steps = await generateMemoryStepsAI(content, mode);
+          clearInterval(mInt2);
+
+          // Fase 3: cascada de pasos
+          let stepsText = '';
+          for (const step of steps) {
+            stepsText += `\n-# • ${step}`;
+            await memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory.*\n-# ${phaseEmoji} *${phaseLabel}.*${stepsText}`).catch(() => null);
+            await new Promise(r => setTimeout(r, 600 + Math.random() * 400));
           }
 
-          if (uiState === 'RECOVERING') {
-            statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria${dots}*${thoughtsList}`).catch(() => null);
-          } else if (uiState === 'SEARCHING') {
-            statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Identificando detalles de ${activeTopicLabel.toLowerCase()}${dots}*${thoughtsList}`).catch(() => null);
-          } else if (uiState === 'SAVING') {
-            statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*${thoughtsList}\n-# ${EMOJIS.summary} *Procesando y guardando nueva información${dots}*`).catch(() => null);
-          }
-          
-          // Avanzar a la siguiente línea de pensamiento cada 2 segundos de forma progresiva
-          if (stepIndex < dynamicThoughts.length && Math.random() > 0.4) {
-            stepIndex++;
-          }
-        }, 1000);
-      } catch (err) {
-        console.error('[memory-ui] Error al enviar estado inicial:', err.message);
-      }
+          // Estado final
+          const finalLabel = mode === 'save' ? 'Memoria actualizada' : 'Memoria recuperada';
+          await memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory.*\n-# ${phaseEmoji} *${phaseLabel}.*${stepsText}\n-# ${EMOJIS.done} *${finalLabel}*`).catch(() => null);
+
+          // Compactar a los 5 minutos para no saturar el canal
+          setTimeout(async () => {
+            if (memoryMsg) await memoryMsg.edit(`-# ${EMOJIS.done} *${finalLabel}*`).catch(() => null);
+          }, 5 * 60 * 1000);
+
+        } catch (err) {
+          console.warn('[memory-ui] Error en UI de memoria explícita:', err.message);
+          if (memoryMsg) memoryMsg.edit(`-# ${EMOJIS.error} *Error al procesar la memoria.*`).catch(() => null);
+        }
+      })();
     }
 
     const memory = await getUserMemory(message.author.id, guildId, userConfig.mode, channelId);
@@ -556,7 +616,6 @@ client.on('messageCreate', async (message) => {
     if (urlText) finalContent += `\n${urlText}`;
 
     // Los recuerdos largos no son instrucciones: se presentan como contexto
-    // de referencia para evitar que un mensaje previo pueda alterar el prompt.
     const rememberedFacts = (memory.facts || [])
       .slice(-25)
       .map(fact => String(fact).replace(/\s+/g, ' ').slice(0, 360))
@@ -571,14 +630,9 @@ client.on('messageCreate', async (message) => {
       const relevantTopics = await getRelevantTopics(message.author.id, content, 5);
       if (relevantTopics.length > 0) {
         activeTopicLabel = relevantTopics[0].title || 'charla';
-        const topicsSummary = relevantTopics
-          .map(t => `[${t.title}] ${t.summary}`)
-          .join('\n');
+        const topicsSummary = relevantTopics.map(t => `[${t.title}] ${t.summary}`).join('\n');
         summaryForAI += `\n\nTEMAS ANTERIORES RELEVANTES:\n${topicsSummary}`;
       }
-      
-      // Cambiar estado de UI a búsqueda/recuperación específica
-      uiState = 'SEARCHING';
     } catch { /* sin topics aún */ }
 
     memory.messages = memory.messages || [];
@@ -590,21 +644,16 @@ client.on('messageCreate', async (message) => {
       createdAt: message.createdAt?.toISOString(),
     });
 
-    // 2. Contexto (quien habla, mood dinamico con intensidad, si es Lara)
+    // 2. Contexto y mood
     const context = analyzeContext(memory.messages, message, client.user.id);
     context.isOwnerMessage = isOwner(message.author);
     const moodInfo = detectMood(context);
 
-    // El mood "funador" (tono acusador con formato Discord) solo se usa si
-    // el server activo lo activo explicitamente con /bot funador activate.
-    // Es reactivo unicamente: se dispara por lo que la persona ACABA de
-    // escribir en este mensaje, nunca por vigilancia de mensajes previos
-    // ni por iniciativa propia del bot.
     if (moodInfo.mood === 'funador' && !flags.funador) {
       moodInfo.mood = 'dramatico';
     }
 
-    // 3. Resumen barato de historial viejo + recorte por tokens
+    // 3. Resumen de historial viejo + recorte por tokens
     const cachedProvider = getActiveProvider();
     const usingBasicModel = cachedProvider && isBasicModel(cachedProvider.name, cachedProvider.model);
 
@@ -621,10 +670,10 @@ client.on('messageCreate', async (message) => {
     const historyBudget = usingBasicModel ? 1200 : 4000;
     const llmHistory = trimHistory(recent, historyBudget).map(h => ({ role: h.role, content: h.content }));
 
-    // 4. Busqueda web "por voluntad propia"
+    // 4. Búsqueda web por voluntad propia
     const webContext = needsWebSearch(content) ? await webSearch(content).catch(() => null) : null;
 
-    // 5. Llamada a la IA con todo el contexto extra
+    // 5. Llamada a la IA
     const userPoints = guildId ? await getUserPoints(guildId, message.author.id).catch(() => 0) : 0;
     const intent = (message.attachments.size > 0 || urlText) ? 'document' : 'chat';
     const conversationSummary = [summaryForAI, summary].filter(Boolean).join('\n\n');
@@ -647,7 +696,6 @@ client.on('messageCreate', async (message) => {
 
     lastAIResponse = { provider: response.provider, model: response.model };
 
-    // Agregar respuesta del bot a la memoria local antes de guardarla asíncronamente
     memory.messages.push({
       role: 'assistant',
       content: response.text,
@@ -655,40 +703,40 @@ client.on('messageCreate', async (message) => {
       createdAt: new Date().toISOString(),
     });
 
-    // Detectar si el usuario pidió explícitamente recordar algo
-    const explicitRemember = /recuerda|guarda|acuerdate|memoriza|guarda en tu memoria/i.test(content);
+    // ═══════════════════════════════════════════════════════
+    // 💡 Detener "Pensando" → mostrar tiempo transcurrido
+    // ═══════════════════════════════════════════════════════
+    if (thinkingInterval) clearInterval(thinkingInterval);
+    const thinkingTime = formatThinkingTime(Date.now() - thinkingStart);
+    if (thinkingMsg) {
+      await thinkingMsg.edit(`-# ${EMOJIS.thinking} *Pensó por ${thinkingTime}*`).catch(() => null);
+    }
 
-    // Guardar respuesta en memoria persistente de forma asíncrona (Fase de Guardado/Escritura)
+    // ═══════════════════════════════════════════════════════
+    // 📚 MEMORY ENGINE — Guardado asíncrono en segundo plano
+    //    Silencioso si no fue solicitud explícita.
+    // ═══════════════════════════════════════════════════════
     (async () => {
       try {
-        uiState = 'SAVING';
-
         const result = await saveUserMemory(message.author.id, guildId, userConfig.mode, memory, channelId);
-        
-        uiState = 'DONE';
-        if (uiInterval) clearInterval(uiInterval);
 
-        // Construir la lista final de pensamientos completados para la UI estática permanente
-        let thoughtsList = '';
-        for (const thought of dynamicThoughts) {
-          thoughtsList += `\n-# • *${thought}*`;
-        }
-
-        if (statusMsg) {
-          if (result && (result.summarized || explicitRemember)) {
-            const topicTitle = result.topicClosed?.title || activeTopicLabel;
-            await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*${thoughtsList}\n-# ${EMOJIS.summary} *Tema [${topicTitle}] resumido y guardado.*\n-# ${EMOJIS.done} **Memory updated**`).catch(() => null);
-          } else {
-            await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.brain_loading} *Recuperando memoria.*\n-# ${EMOJIS.database} *Detalles de conversación recuperados.*${thoughtsList}\n-# ${EMOJIS.done} **Listo**`).catch(() => null);
-          }
+        // Memoria automática silenciosa: solo aparece si hubo compactación real
+        if (result?.summarized && !memoryIntent.isExplicit) {
+          let silentMsg = null;
+          try {
+            silentMsg = await message.channel.send(`-# ${EMOJIS.memory} *Managing memory*`);
+            let sDot = 0;
+            const sInt = setInterval(() => {
+              sDot = (sDot % 3) + 1;
+              silentMsg.edit(`-# ${EMOJIS.memory} *Managing memory${'.'.repeat(sDot)}*`).catch(() => null);
+            }, 700);
+            await new Promise(r => setTimeout(r, 2500));
+            clearInterval(sInt);
+            await silentMsg.edit(`-# ${EMOJIS.done} *Memoria actualizada*`).catch(() => null);
+          } catch { /* silencioso */ }
         }
       } catch (err) {
         console.error('[memory] Error guardando memoria:', err.message);
-        uiState = 'DONE';
-        if (uiInterval) clearInterval(uiInterval);
-        if (statusMsg) {
-          await statusMsg.edit(`-# **Pensando**\n-# ${EMOJIS.error} *Error al guardar la memoria.*`).catch(() => null);
-        }
       }
     })();
 
