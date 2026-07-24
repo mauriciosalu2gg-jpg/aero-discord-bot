@@ -97,8 +97,8 @@ async function generateMemoryStepsAI(content, mode) {
   if (!isMemoryEngineAvailable()) return mode === 'save' ? fallbackSave : fallbackRecall;
 
   const prompt = mode === 'save'
-    ? `El usuario dijo: "${content.slice(0, 200)}". Genera de 3 a 5 pasos muy breves de lo que un asistente haría para guardar esa información en su memoria. Solo los pasos, uno por línea, sin viñetas ni números.`
-    : `El usuario dijo: "${content.slice(0, 200)}". Genera de 4 a 6 pasos breves de lo que un asistente haría para recuperar información relevante de su memoria. Solo los pasos, uno por línea, sin viñetas ni números.`;
+    ? `El usuario dijo: "${content.slice(0, 200)}". Genera de 3 a 5 pasos ULTRACORTOS (máximo 3-4 palabras por paso, en formato gerundio tipo "Analizando contexto", "Extrayendo preferencias") de lo que un asistente haría para guardar esta información en su memoria. Solo los pasos, uno por línea, sin viñetas ni números.`
+    : `El usuario dijo: "${content.slice(0, 200)}". Genera de 3 a 5 pasos ULTRACORTOS (máximo 3-4 palabras por paso, en formato gerundio tipo "Buscando referencias", "Consultando historial") de lo que un asistente haría para recuperar información relevante de su memoria. Solo los pasos, uno por línea, sin viñetas ni números.`;
 
   try {
     const res = await askMemoryEngine('topic', [{ role: 'user', content: prompt }], 0.2);
