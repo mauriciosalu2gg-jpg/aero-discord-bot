@@ -602,25 +602,46 @@ async function runAutoModeration(message) {
 
     const modState = getModerationState(guildId);
     const guardians = modState.guardians || [];
-    const guardianPings = guardians.length > 0 ? guardians.map(id => `<@${id}>`).join(' ') : '';
-    const mentionNotice = guardianPings ? `<@${message.author.id}> 🔔 Guardianes: ${guardianPings}` : `<@${message.author.id}>`;
-    const allowedUserIds = Array.from(new Set([message.author.id, ...guardians]));
+
+    // Enviar el embed de sanción directamente por Mensaje Directo (MD) a cada Guardián activo
+    if (guardians.length > 0) {
+      const dmEmbed = formatEmbed(action, aiResult.severity_reason, totalPoints, message.author.id, aiResult.rule_violated);
+      dmEmbed.setFooter({ text: `Novarito Moderación • Servidor: ${message.guild?.name || 'Servidor'}` });
+
+      for (const guardianId of guardians) {
+        (async () => {
+          try {
+            const gUser = await client.users.fetch(guardianId).catch(() => null);
+            if (gUser) {
+              await gUser.send({
+                content: `🔔 **Alerta de Moderación** en el servidor **${message.guild?.name}** (canal: #${message.channel?.name || 'desconocido'}):`,
+                embeds: [dmEmbed]
+              }).catch(() => {});
+            }
+          } catch (e) {
+            console.warn(`[moderation] No se pudo enviar MD al guardián ${guardianId}:`, e.message);
+          }
+        })();
+      }
+    }
+
+    const publicEmbed = formatEmbed(action, aiResult.severity_reason, totalPoints, message.author.id, aiResult.rule_violated);
 
     switch(action) {
       case 'WARN':
         await message.channel.send({
-          content: mentionNotice,
-          embeds: [formatEmbed('WARN', aiResult.severity_reason, totalPoints, message.author.id, aiResult.rule_violated)],
-          allowedMentions: { users: allowedUserIds }
+          content: `<@${message.author.id}>`,
+          embeds: [publicEmbed],
+          allowedMentions: { users: [message.author.id] }
         });
         break;
       case 'MUTE':
         if (member && member.moderatable) {
           await member.timeout(10 * 60 * 1000, `AutoMod: ${aiResult.rule_violated}`);
           await message.channel.send({
-            content: mentionNotice,
-            embeds: [formatEmbed('MUTE', aiResult.severity_reason, totalPoints, message.author.id, aiResult.rule_violated)],
-            allowedMentions: { users: allowedUserIds }
+            content: `<@${message.author.id}>`,
+            embeds: [publicEmbed],
+            allowedMentions: { users: [message.author.id] }
           });
         } else {
           await message.channel.send({
@@ -632,9 +653,9 @@ async function runAutoModeration(message) {
         if (member && member.kickable) {
           await member.kick(`AutoMod: ${aiResult.rule_violated}`);
           await message.channel.send({
-            content: mentionNotice,
-            embeds: [formatEmbed('KICK', aiResult.severity_reason, totalPoints, message.author.id, aiResult.rule_violated)],
-            allowedMentions: { users: allowedUserIds }
+            content: `<@${message.author.id}>`,
+            embeds: [publicEmbed],
+            allowedMentions: { users: [message.author.id] }
           });
         } else {
           await message.channel.send({
@@ -646,9 +667,9 @@ async function runAutoModeration(message) {
         if (member && member.bannable) {
           await member.ban({ reason: `AutoMod: ${aiResult.rule_violated}` });
           await message.channel.send({
-            content: mentionNotice,
-            embeds: [formatEmbed('BAN', aiResult.severity_reason, totalPoints, message.author.id, aiResult.rule_violated)],
-            allowedMentions: { users: allowedUserIds }
+            content: `<@${message.author.id}>`,
+            embeds: [publicEmbed],
+            allowedMentions: { users: [message.author.id] }
           });
         } else {
           await message.channel.send({
