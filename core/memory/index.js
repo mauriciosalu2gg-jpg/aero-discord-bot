@@ -139,6 +139,12 @@ export async function getUserMemory(userId, guildId, mode, channelId) {
     }
   }
 
+  let media = [];
+  try {
+    const mediaData = await getCached(mediaPath(userId), { media: [] });
+    media = mediaData.media || [];
+  } catch { /* ignore */ }
+
   let topics = [];
   if (mode === 'global') {
     try {
@@ -168,6 +174,7 @@ export async function getUserMemory(userId, guildId, mode, channelId) {
   return {
     messages,
     facts: allFacts,
+    media,
     summary: factsData.summary || '',
     isGlobal: mode === 'global',
     ...(mode === 'global' ? { topics } : {})

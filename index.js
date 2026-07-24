@@ -97,8 +97,8 @@ async function generateMemoryStepsAI(content, mode) {
   if (!isMemoryEngineAvailable()) return mode === 'save' ? fallbackSave : fallbackRecall;
 
   const prompt = mode === 'save'
-    ? `El usuario dijo: "${content.slice(0, 200)}". Genera hasta 10 pasos resumidos de lo que un asistente haría para guardar esta información en su memoria de largo plazo. Sé descriptivo pero mantén cada paso compacto. Solo los pasos, uno por línea, sin viñetas ni números.`
-    : `El usuario dijo: "${content.slice(0, 200)}". Genera hasta 10 pasos resumidos de lo que un asistente haría para recuperar información relevante de su memoria. Sé descriptivo pero mantén cada paso compacto. Solo los pasos, uno por línea, sin viñetas ni números.`;
+    ? `El usuario dijo: "${content.slice(0, 200)}". Genera hasta 10 pasos ULTRACORTOS (máximo 4 palabras por paso, en gerundio tipo "Analizando contexto", "Extrayendo preferencias") de lo que un asistente haría para guardar esta información en su memoria. Solo los pasos, uno por línea, sin viñetas ni números.`
+    : `El usuario dijo: "${content.slice(0, 200)}". Genera hasta 10 pasos ULTRACORTOS (máximo 4 palabras por paso, en gerundio tipo "Buscando referencias", "Consultando historial") de lo que un asistente haría para recuperar información de su memoria. Solo los pasos, uno por línea, sin viñetas ni números.`;
 
   try {
     const res = await askMemoryEngine('topic', [{ role: 'user', content: prompt }], 0.2);
@@ -892,7 +892,13 @@ client.on('messageCreate', async (message) => {
     // 5. Llamada a la IA
     const userPoints = guildId ? await getUserPoints(guildId, message.author.id).catch(() => 0) : 0;
     const intent = (message.attachments.size > 0 || urlText) ? 'document' : 'chat';
-    const conversationSummary = [summaryForAI, summary].filter(Boolean).join('\n\n');
+    
+    let mediaSummary = '';
+    if (memory.media && memory.media.length > 0) {
+      mediaSummary = `ARCHIVOS Y ENLACES EN MEMORIA:\nEl usuario te ha compartido estos archivos previamente:\n` + memory.media.map(m => `- [${m.type}] ${m.name || 'Archivo'}: ${m.url}`).join('\n') + `\n⚠️ CRÍTICO: Si el usuario te pide que le pases, envíes o recuerdes algún archivo (PDF, imagen, video, etc) o enlace que tengas guardado, DEBES enviarle directamente la URL correspondiente en tu respuesta para que Discord lo muestre.`;
+    }
+    
+    const conversationSummary = [summaryForAI, summary, mediaSummary].filter(Boolean).join('\n\n');
     const response = await askAI(llmHistory, recentTokens, {
       moodInfo,
       intent,
