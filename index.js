@@ -270,14 +270,23 @@ async function runExplicitMemoryUi(message, content, mode, details = '', thinkin
         const statusLine = `-# ${EMOJIS.done} *${finalLabel}*`;
         if (thinkingState) thinkingState.memoryStatusLine = statusLine;
 
-        const thinkingTimeStr = formatThinkingTime(Date.now() - (thinkingState?.startTime || Date.now()));
-        const thinkingLine = `-# ${EMOJIS.thinking} *Pensó por ${thinkingTimeStr}*`;
-        const combinedFooter = `${thinkingLine}\n${statusLine}`;
-
         if (thinkingState?.aiResponseText) {
+          const elapsedMs = Date.now() - (thinkingState.startTime || Date.now());
+          const thinkingTimeStr = formatThinkingTime(elapsedMs);
+          const thinkingLine = `-# ${EMOJIS.thinking} *Pensó por ${thinkingTimeStr}*`;
+          const combinedFooter = `${thinkingLine}\n${statusLine}`;
           await memoryMsg.edit(`${thinkingState.aiResponseText}\n${combinedFooter}`).catch(() => null);
+
+          // Tras 3 minutos (180,000 ms = 3 min), remueve "Memoria actualizada" dejando solo "Pensó por..."
+          setTimeout(async () => {
+            try {
+              if (thinkingState?.aiResponseText) {
+                await memoryMsg.edit(`${thinkingState.aiResponseText}\n${thinkingLine}`).catch(() => null);
+              }
+            } catch { /* ignore */ }
+          }, 180000);
         } else {
-          await memoryMsg.edit(combinedFooter).catch(() => null);
+          await memoryMsg.edit(statusLine).catch(() => null);
         }
       }
     } catch (err) {
@@ -356,14 +365,23 @@ async function runExplicitMemoryUi(message, content, mode, details = '', thinkin
     const statusLine = `-# ${EMOJIS.done} *${finalLabel}${finalDetailStr}*`;
     if (thinkingState) thinkingState.memoryStatusLine = statusLine;
 
-    const thinkingTimeStr = formatThinkingTime(Date.now() - (thinkingState?.startTime || Date.now()));
-    const thinkingLine = `-# ${EMOJIS.thinking} *Pensó por ${thinkingTimeStr}*`;
-    const combinedFooter = `${thinkingLine}\n${statusLine}`;
-
     if (thinkingState?.aiResponseText) {
+      const elapsedMs = Date.now() - (thinkingState.startTime || Date.now());
+      const thinkingTimeStr = formatThinkingTime(elapsedMs);
+      const thinkingLine = `-# ${EMOJIS.thinking} *Pensó por ${thinkingTimeStr}*`;
+      const combinedFooter = `${thinkingLine}\n${statusLine}`;
       await memoryMsg.edit(`${thinkingState.aiResponseText}\n${combinedFooter}`).catch(() => null);
+
+      // Tras 3 minutos (180,000 ms = 3 min), remueve "Memoria actualizada" dejando solo "Pensó por..."
+      setTimeout(async () => {
+        try {
+          if (thinkingState?.aiResponseText) {
+            await memoryMsg.edit(`${thinkingState.aiResponseText}\n${thinkingLine}`).catch(() => null);
+          }
+        } catch { /* ignore */ }
+      }, 180000);
     } else {
-      await memoryMsg.edit(combinedFooter).catch(() => null);
+      await memoryMsg.edit(statusLine).catch(() => null);
     }
 
   } catch (err) {
@@ -1260,6 +1278,17 @@ client.on('messageCreate', async (message) => {
           }
           await thinkingMsg.edit(`${fullContent}\n${footerStr}`).catch(() => null);
           firstMessageEdited = true;
+
+          // Tras 3 minutos (180,000 ms = 3 min), remueve "Memoria actualizada" dejando solo "Pensó por..."
+          if (thinkingState?.memoryStatusLine) {
+            setTimeout(async () => {
+              try {
+                if (thinkingMsg) {
+                  await thinkingMsg.edit(`${fullContent}\n${thinkingLine}`).catch(() => null);
+                }
+              } catch { /* ignore */ }
+            }, 180000);
+          }
         } else {
           await message.channel.send(chunk);
         }

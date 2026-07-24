@@ -46,6 +46,12 @@ const TRIGGERS = [
 
 export function needsWebSearch(content) {
   const lower = (content || '').toLowerCase();
+
+  // Si habla de memoria, servidores, historial o recuerdos del bot, NUNCA buscar en la web
+  if (/memoria|recuerd|guardas|guardad|otros servidores|servidores|este servidor|historial/i.test(lower)) {
+    return false;
+  }
+
   return TRIGGERS.some(t => lower.includes(t));
 }
 
