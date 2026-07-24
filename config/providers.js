@@ -20,14 +20,18 @@ export const MODEL_LADDERS = {
     'gemini-2.0-flash',
     'gemini-1.5-flash',
     'gemini-1.5-pro',
+    'gemini-2.0-flash-lite',
   ],
   groq: [
     'llama-3.3-70b-versatile',
     'llama-3.1-8b-instant',
+    'mixtral-8x7b-32768',
+    'gemma2-9b-it',
   ],
   openai: [
     'gpt-4o-mini',
     'gpt-4o',
+    'gpt-3.5-turbo',
   ],
   anthropic: [
     'claude-3-5-sonnet-latest',
@@ -35,11 +39,13 @@ export const MODEL_LADDERS = {
   ],
   cerebras: [
     'llama-3.3-70b',
+    'llama3.1-8b',
   ],
   openrouter: [
-    'google/gemini-2.0-flash-001',
-    'meta-llama/llama-3.3-70b-instruct:free',
-    'deepseek/deepseek-chat',
+    'meta-llama/llama-3.3-70b-instruct',
+    'google/gemini-2.0-flash-exp:free',
+    'deepseek/deepseek-r1:free',
+    'meta-llama/llama-3.1-8b-instruct:free',
   ],
   huggingface: [
     'meta-llama/Llama-3.3-70B-Instruct',

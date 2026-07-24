@@ -913,12 +913,16 @@ async function runAutoModeration(message) {
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
   
-  const botId = client.user?.id;
-  const isDirectMention = Boolean(botId && (message.mentions.users.has(botId) || message.content.includes(botId)));
-  const isNameCalled = /\b(novarito|nova|novaro)\b/i.test(message.content);
+  const botId = client.user?.id || process.env.DISCORD_CLIENT_ID;
+  const isDirectMention = Boolean(
+    (client.user && message.mentions.has(client.user)) ||
+    (botId && message.mentions.users.has(botId)) ||
+    (botId && message.content.includes(botId))
+  );
+  const isNameCalled = /novarito|nova|novaro/i.test(message.content);
   const isMentioned = isDirectMention || isNameCalled;
   const isReplyToBot = message.reference?.messageId
-    ? await message.fetchReference().then(ref => ref.author?.id === botId).catch(() => false)
+    ? await message.fetchReference().then(ref => ref.author?.id === botId || ref.author?.id === client.user?.id).catch(() => false)
     : false;
   const isDM = message.channel.type === 1;
   const wasExplicitlyCalled = isMentioned || isReplyToBot || isDM;
