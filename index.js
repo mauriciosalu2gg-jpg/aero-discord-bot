@@ -603,10 +603,39 @@ async function runAutoModeration(message) {
     const modState = getModerationState(guildId);
     const guardians = modState.guardians || [];
 
-    // Enviar el embed de sanción directamente por Mensaje Directo (MD) a cada Guardián activo
+    // Capturar información de evidencia del mensaje del usuario ANTES de ser eliminado
+    const messageContentText = message.content || '[Sin contenido de texto / Archivo adjunto]';
+    const authorAvatar = message.author.displayAvatarURL({ dynamic: true, size: 256 });
+    const firstAttachment = message.attachments.find(a => a.contentType?.startsWith('image/') || a.url?.match(/\.(png|jpg|jpeg|gif|webp)$/i));
+
+    // Enviar el embed de sanción directamente por Mensaje Directo (MD) a cada Guardián activo con la EVIDENCIA CAPTURADA
     if (guardians.length > 0) {
-      const dmEmbed = formatEmbed(action, aiResult.severity_reason, totalPoints, message.author.id, aiResult.rule_violated);
-      dmEmbed.setFooter({ text: `Novarito Moderación • Servidor: ${message.guild?.name || 'Servidor'}` });
+      let actionTitle = 'Advertencia';
+      if (action === 'MUTE') actionTitle = 'Silencio Temporal (Mute)';
+      if (action === 'KICK') actionTitle = 'Expulsión (Kick)';
+      if (action === 'BAN') actionTitle = 'Baneo Permanente (Ban)';
+
+      const dmEmbed = new EmbedBuilder()
+        .setTitle(`🚨 Alerta de Moderación: ${actionTitle}`)
+        .setColor(currentLevel.color)
+        .setDescription(`Se registró una infracción al reglamento en **${message.guild?.name}** (Canal: <#${message.channel.id}>).`)
+        .addFields(
+          { name: '👤 Usuario Infractor', value: `<@${message.author.id}> (\`${message.author.tag}\` | ID: \`${message.author.id}\`)`, inline: false },
+          { name: '📜 Regla Violada', value: `\`${aiResult.rule_violated}\``, inline: true },
+          { name: '📊 Acumulado', value: `\`${totalPoints} / 100 pts\``, inline: true },
+          { name: '💬 Motivo / Detalle', value: aiResult.severity_reason || 'Comportamiento no permitido.' },
+          { 
+            name: '📸 EVIDENCIA CAPTURADA (Texto del Mensaje)', 
+            value: `\`\`\`text\n${messageContentText.slice(0, 950)}\n\`\`\`` 
+          }
+        )
+        .setThumbnail(authorAvatar)
+        .setFooter({ text: `Novarito Moderación • Evidencia capturada` })
+        .setTimestamp();
+
+      if (firstAttachment) {
+        dmEmbed.setImage(firstAttachment.url);
+      }
 
       for (const guardianId of guardians) {
         (async () => {
@@ -614,7 +643,7 @@ async function runAutoModeration(message) {
             const gUser = await client.users.fetch(guardianId).catch(() => null);
             if (gUser) {
               await gUser.send({
-                content: `🔔 **Alerta de Moderación** en el servidor **${message.guild?.name}** (canal: #${message.channel?.name || 'desconocido'}):`,
+                content: `🔔 **Alerta de Moderación** en **${message.guild?.name}** (#${message.channel?.name || 'chat'}):`,
                 embeds: [dmEmbed]
               }).catch(() => {});
             }

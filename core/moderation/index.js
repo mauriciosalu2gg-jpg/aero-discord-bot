@@ -43,21 +43,16 @@ const SUSPICIOUS_WORDS = [
   'chinga', 'chingad', 'cabron', 'mamada', 'mamaguevo', 'conchatumadre', 'conchesumadre',
   'culero', 'pinche', 'joto', 'zorra', 'perra', 'pendejada', 'verga', 'ojete', 'cabrona',
   'putazo', 'putazos', 'hijo de', 'hdtpm', 'hdtp', 'hijos de', 'vete a la', 'chale',
-  // Abreviaciones comunes MX/LATAM
-  'ptm', 'ctm', 'cdsm', 'mrd', 'mmg', 'hdspm', 'csm', 'ojt', 'pdj',
-  'pndjo', 'pndejo', 'cbrn', 'kbron', 'vrg', 'vga', 'ptos', 'ptas',
-  'chngd', 'mmd', 'mmdas', 'pnch', 'mrcn', 'zrra', 'prra',
-  'pndj', 'lpm', 'qlo', 'hp', 'cdspm', 'alv', 'kbro',
+  // Abreviaciones y palabras explícitas (Evitar palabras ambiguas de 2-3 letras inofensivas)
+  'ptm', 'ctm', 'cdsm', 'hdspm', 'csm', 'pndjo', 'pndejo', 'cbrn', 'kbron',
+  'chngd', 'mmdas', 'pnch', 'mrcn', 'zrra', 'prra', 'pndj', 'lpm', 'cdspm',
   // Ingles
   'fuck', 'fuk', 'fck', 'shit', 'bitch', 'asshole', 'bastard', 'cunt', 'dick', 'cock',
   'motherfucker', 'motherfuk', 'fucker', 'whore', 'slut', 'nigga', 'nigger', 'faggot',
-  'retard', 'stupid', 'idiot', 'moron', 'dumbass', 'dipshit', 'jackass', 'piss off',
-  'go to hell', 'son of a bitch', 'wtf', 'stfu', 'kys', 'kms',
-  // Portugues
-  'porra', 'caralho', 'merda', 'foda', 'fodase', 'viado', 'arrombado', 'filha da puta',
-  'vtnc', 'cuzao', 'filho da puta',
-  // Frances / otro
-  'merde', 'salaud', 'connard', 'putain', 'con',
+  'retard', 'moron', 'dumbass', 'dipshit', 'jackass', 'piss off',
+  'go to hell', 'son of a bitch', 'stfu', 'kys', 'kms',
+  // Portugues / Frances
+  'porra', 'caralho', 'arrombado', 'filha da puta', 'vtnc', 'connard', 'putain',
   // Racismo / odio
   'racista', 'nazismo', 'nazi', 'xenofob', 'homofob', 'transfob',
 ];
@@ -370,12 +365,12 @@ CLASIFICACIÓN DE INFRACCIONES (Reglamento §02 y §05):
 - LENGUAJE_VULGAR: uso de groserías, palabras altisonantes o vulgaridades explícitas (incluyendo abreviaciones como ptm, alv, ctm, etc) sin ir dirigidas a ofender a alguien en específico. (10 pts)
 - NINGUNA: el mensaje no viola ninguna norma del reglamento.
 
-IMPORTANTE:
-1. Analiza el contexto antes de clasificar. Considera el sarcasmo y respuestas a provocaciones previas. NO clasifiques como infracción conversaciones informales sanas.
-2. NO hay excepciones para el Staff ni para nadie. Todos son tratados por igual. Si un administrador dice groserías, cuenta como LENGUAJE_VULGAR.
-3. El sistema automático ya maneja los niveles (3 a 6 avisos antes de sancionar de verdad), así que no te preocupes por ser estricto. Aplica la infracción que corresponda sin miedo.
-4. Cero tolerancia a NSFW/Doxxing/Scam.
-5. RECONOCIMIENTO DE ABREVIATURAS: "ptm" (puta madre), "alv" (a la verga), "ctm" (concha tu madre), "hdp" (hijo de puta) son groserías y deben clasificarse como LENGUAJE_VULGAR como mínimo.
+IMPORTANTE PARA ALTA PRECISIÓN:
+1. NO sanciones abreviaciones inofensivas de chat, palabras de 3 letras ambiguas, ni typos informales (ej: "pto", "xd", "lol", "bot", "tmb", "k") A MENOS que haya una intención ofensiva o vulgar explícita dirigida a causar daño.
+2. Para clasificar LENGUAJE_VULGAR, debe tratarse de una grosería explícita, directa y pesada (ej: "puta madre", "chingada madre", "verga", "mierda"). Si el mensaje es ambiguo o una palabra corta inofensiva en contexto casual, clasifícalo como NINGUNA.
+3. Considera el contexto antes de clasificar. NO sanciones conversaciones informales sanas ni bromas entre amigos.
+4. Si la confianza es menor a 85% o tienes dudas de si es una falta real, clasifica como NINGUNA.
+5. Cero tolerancia a NSFW/Doxxing/Scam/Amenazas explícitas.
 
 Responde ÚNICAMENTE con JSON válido, sin texto adicional:
 {
