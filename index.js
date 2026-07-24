@@ -956,24 +956,36 @@ client.on('messageCreate', async (message) => {
     if (message.attachments.size > 0) {
       const attachmentText = await processAttachments(message.attachments);
       if (attachmentText) finalContent += `\n${attachmentText}`;
+
+      const attachmentSummaries = [];
+      for (const attachment of message.attachments.values()) {
+        const isVideo = attachment.contentType?.includes('video') || /\.(mp4|mov|webm|mkv|avi)$/i.test(attachment.name || '');
+        const isImage = attachment.contentType?.includes('image') || /\.(png|jpg|jpeg|gif|webp)$/i.test(attachment.name || '');
+        const typeLabel = isVideo ? 'video MP4' : isImage ? 'imagen' : 'archivo';
+        attachmentSummaries.push(`[ARCHIVO ADJUNTO RECIBIDO]: Tipo: ${typeLabel}, Nombre: "${attachment.name}", URL directa: ${attachment.url}`);
+      }
+      finalContent += `\n${attachmentSummaries.join('\n')}\n⚠️ INSTRUCCIÓN DE ADJUNTOS: El usuario te envió este archivo/video directamente en Discord. Si te pide guardarlo en memoria, confirma que ya guardaste el archivo con la URL proporcionada.`;
     }
 
     urlText = await processUrls(content);
     if (urlText) finalContent += `\n${urlText}`;
 
-    // Guardar referencias de media. Si el usuario pidio guardar, se espera antes de responder.
+    // Guardar referencias de media. Si el usuario pidió guardar, se espera antes de responder.
     const mediaSavePromise = (async () => {
       try {
         const { saveMediaReference } = await import('./core/memory/index.js');
         // Guardar attachments
         for (const attachment of message.attachments.values()) {
-          const type = attachment.contentType?.includes('image') ? 'image'
-            : attachment.contentType?.includes('pdf') ? 'pdf' : 'file';
+          const isVideo = attachment.contentType?.includes('video') || /\.(mp4|mov|webm|mkv|avi)$/i.test(attachment.name || '');
+          const isImage = attachment.contentType?.includes('image') || /\.(png|jpg|jpeg|gif|webp)$/i.test(attachment.name || '');
+          const isPdf = attachment.contentType?.includes('pdf') || /\.pdf$/i.test(attachment.name || '');
+          const type = isVideo ? 'video' : isImage ? 'image' : isPdf ? 'pdf' : 'file';
+
           await saveMediaReference(message.author.id, {
             type,
             url: attachment.url,
             name: attachment.name,
-            description: `${type} compartido en el chat`,
+            description: `${type} subido por el usuario a Discord`,
           });
         }
         // Guardar links del mensaje (si los hay y no son maliciosos)
@@ -983,7 +995,7 @@ client.on('messageCreate', async (message) => {
             type: 'link',
             url,
             name: url,
-            description: 'link compartido en el chat',
+            description: 'enlace compartido en el chat',
           });
         }
       } catch { /* silencioso */ }

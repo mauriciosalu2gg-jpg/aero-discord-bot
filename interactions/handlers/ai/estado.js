@@ -64,5 +64,5 @@ export async function handleEstado(interaction) {
     footer: { text: 'Sistema de Diagnóstico Integrado' }
   };
 
-  await interaction.followUp({ embeds: [embed] });
+  await interaction.editReply({ embeds: [embed] });
 }
