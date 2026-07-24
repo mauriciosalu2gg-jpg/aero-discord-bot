@@ -97,12 +97,12 @@ async function generateMemoryStepsAI(content, mode) {
   if (!isMemoryEngineAvailable()) return mode === 'save' ? fallbackSave : fallbackRecall;
 
   const prompt = mode === 'save'
-    ? `El usuario dijo: "${content.slice(0, 200)}". Genera de 3 a 5 pasos ULTRACORTOS (máximo 3-4 palabras por paso, en formato gerundio tipo "Analizando contexto", "Extrayendo preferencias") de lo que un asistente haría para guardar esta información en su memoria. Solo los pasos, uno por línea, sin viñetas ni números.`
-    : `El usuario dijo: "${content.slice(0, 200)}". Genera de 3 a 5 pasos ULTRACORTOS (máximo 3-4 palabras por paso, en formato gerundio tipo "Buscando referencias", "Consultando historial") de lo que un asistente haría para recuperar información relevante de su memoria. Solo los pasos, uno por línea, sin viñetas ni números.`;
+    ? `El usuario dijo: "${content.slice(0, 200)}". Genera hasta 10 pasos resumidos de lo que un asistente haría para guardar esta información en su memoria de largo plazo. Sé descriptivo pero mantén cada paso compacto. Solo los pasos, uno por línea, sin viñetas ni números.`
+    : `El usuario dijo: "${content.slice(0, 200)}". Genera hasta 10 pasos resumidos de lo que un asistente haría para recuperar información relevante de su memoria. Sé descriptivo pero mantén cada paso compacto. Solo los pasos, uno por línea, sin viñetas ni números.`;
 
   try {
     const res = await askMemoryEngine('topic', [{ role: 'user', content: prompt }], 0.2);
-    const steps = res.split('\n').map(s => s.trim().replace(/^[-*•\d\.\s]+/, '').slice(0, 90)).filter(s => s.length > 4).slice(0, 20);
+    const steps = res.split('\n').map(s => s.trim().replace(/^[-*•\d\.\s]+/, '').slice(0, 150)).filter(s => s.length > 4).slice(0, 12);
     return steps.length >= 2 ? steps : (mode === 'save' ? fallbackSave : fallbackRecall);
   } catch {
     return mode === 'save' ? fallbackSave : fallbackRecall;
@@ -147,8 +147,8 @@ function memoryUiTiming(content, mode) {
   const size = String(content || '').length;
   const largeBoost = clamp(Math.floor(size / 900), 0, 8);
   return {
-    introMs: mode === 'save' ? 2200 + largeBoost * 450 : 1800,
-    stepMs: mode === 'save' ? 1800 + largeBoost * 200 : 1600,
+    introMs: mode === 'save' ? 3000 + largeBoost * 600 : 2500,
+    stepMs: mode === 'save' ? 2800 + largeBoost * 400 : 2500,
     intervalMs: 2000,
   };
 }
