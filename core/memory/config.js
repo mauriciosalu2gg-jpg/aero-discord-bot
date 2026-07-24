@@ -1,7 +1,7 @@
 import { flushCached, getCached, setCached } from '../cache/firebaseCache.js';
 
 const DEFAULT_CONFIG = {
-  mode: 'local', // 'off', 'local', 'global'
+  mode: 'global', // Memoria global SIEMPRE activa por defecto
   profile: {
     preferredName: '',
     pronouns: '',
@@ -18,8 +18,8 @@ const DEFAULT_CONFIG = {
 export async function getUserMemoryConfig(userId) {
   const docPath = `users/${userId}/config/memory`;
   const data = await getCached(docPath, DEFAULT_CONFIG);
-  // Merge con default para asegurar que existan los campos nuevos
-  return { ...DEFAULT_CONFIG, ...data, profile: { ...DEFAULT_CONFIG.profile, ...(data?.profile || {}) } };
+  const mode = data?.mode && data.mode !== 'off' ? data.mode : 'global';
+  return { ...DEFAULT_CONFIG, ...data, mode, profile: { ...DEFAULT_CONFIG.profile, ...(data?.profile || {}) } };
 }
 
 /**
