@@ -469,13 +469,13 @@ http.createServer((req, res) => {
 client.once('ready', async () => {
   console.log(`[discord] Conectado como ${client.user.tag}`);
   
-  // Desplegar comandos directamente en cada servidor para actualización INSTANTÁNEA en PC y móvil
+  // Limpiar comandos a nivel de servidor (guild commands) para evitar duplicados en la UI de Discord
   client.guilds.cache.forEach(async (g) => {
     config.registerGuild(g);
     try {
-      await g.commands.set(commandDefinitions);
+      await g.commands.set([]);
     } catch (err) {
-      console.warn(`[discord] No se pudieron desplegar comandos locales en ${g.name}:`, err.message);
+      console.warn(`[discord] No se pudieron limpiar comandos locales en ${g.name}:`, err.message);
     }
   });
   startConfigRefresh(5);
