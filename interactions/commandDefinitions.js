@@ -12,7 +12,6 @@ export const commandDefinitions = [
         { name: 'Imaginar (Generar imagen)', value: 'imaginar' },
         { name: 'Estado (Diagnóstico de IA)', value: 'estado' },
         { name: 'Proveedor (Cambiar IA activa)', value: 'proveedor' },
-        { name: 'Modo Memoria (Local / Global)', value: 'modo_memoria' },
         { name: 'Limpiar Memoria (Borrar historial)', value: 'limpiar_memoria' },
         { name: 'Editar Personalidad', value: 'editar_personalidad' },
         { name: 'Ver Personalidad', value: 'ver_personalidad' },
@@ -31,15 +30,6 @@ export const commandDefinitions = [
         { name: 'Google Gemini', value: 'gemini' },
         { name: 'Anthropic (Claude)', value: 'anthropic' },
         { name: 'OpenAI', value: 'openai' },
-      )
-    )
-    .addStringOption(opt => opt
-      .setName('nivel')
-      .setDescription('Nivel de retención de memoria (modo_memoria)')
-      .setRequired(false)
-      .addChoices(
-        { name: 'Local (Por servidor)', value: 'local' },
-        { name: 'Global (Compartida)', value: 'global' },
       )
     )
     .addUserOption(opt => opt.setName('usuario').setDescription('Usuario objetivo (para pts_reset)').setRequired(false)),
