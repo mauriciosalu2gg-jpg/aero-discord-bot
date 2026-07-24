@@ -16,6 +16,7 @@ import { trimHistory, summarizeOld, estimateTokens, buildUltraCompactContext } f
 import { splitHumanized, delayBetweenParts } from './core/messageSplitter.js';
 import { pickMuletilla } from './core/personality.js';
 import { webSearch, needsWebSearch } from './core/webSearch.js';
+import { initServerMemory, deleteServerMemory } from './core/memory/serverMemoryManager.js';
 import { computeThinkingDelay, humanizedTyping } from './core/typingDelay.js';
 import { getFlags, matchesStopPhrase, matchesResumePhrase, setFlag, hydrateFlags } from './core/behaviorFlags.js';
 import { markActivity, startIdleWatcher } from './core/idleFacts.js';
@@ -519,9 +520,10 @@ http.createServer((req, res) => {
 client.once('ready', async () => {
   console.log(`[discord] Conectado como ${client.user.tag}`);
   
-  // Limpiar comandos a nivel de servidor (guild commands) para evitar duplicados en la UI de Discord
+  // Limpiar comandos a nivel de servidor (guild commands) e inicializar memoria singular
   client.guilds.cache.forEach(async (g) => {
     config.registerGuild(g);
+    await initServerMemory(g.id, g.name).catch(() => {});
     try {
       await g.commands.set([]);
     } catch (err) {
@@ -552,6 +554,17 @@ client.once('ready', async () => {
   validateAllProviders(secrets.getAvailableProviders())
     .then(() => console.log('[modelValidator] Validacion de modelos completada.'))
     .catch(err => console.warn('[modelValidator] Error validando modelos:', err.message));
+
+  client.on('guildCreate', async (guild) => {
+    console.log(`[guildCreate] Bot añadido al servidor: ${guild.name} (${guild.id})`);
+    config.registerGuild(guild);
+    await initServerMemory(guild.id, guild.name).catch(() => {});
+  });
+
+  client.on('guildDelete', async (guild) => {
+    console.log(`[guildDelete] Bot removido del servidor: ${guild.name} (${guild.id})`);
+    await deleteServerMemory(guild.id).catch(() => {});
+  });
 
   // Precarga desde Firestore los flags de comportamiento y el estado de
   // moderacion/strikes de cada servidor, para no perder configuracion en

@@ -390,12 +390,32 @@ export async function getRelevantTopics(userId, query, topN = 5) {
   }
 }
 
+import { getAllServersMemory, readServerMemory, saveServerMemory } from './serverMemoryManager.js';
+
 export async function getAllUserServerMemories(userId) {
-  if (!db || !userId) return [];
+  const localServerMemories = getAllServersMemory();
+  const aggregated = [];
+
+  for (const sMem of localServerMemories) {
+    const userFacts = sMem.users?.[userId]?.facts || sMem.facts || [];
+    const userSummary = sMem.users?.[userId]?.summary || sMem.summary || '';
+    if (userFacts.length > 0 || userSummary) {
+      aggregated.push({
+        serverId: sMem.serverId,
+        serverName: sMem.name || 'Servidor',
+        summary: userSummary,
+        facts: userFacts,
+        updatedAt: sMem.updatedAt || ''
+      });
+    }
+  }
+
+  if (!db || !userId) return aggregated;
+
   try {
     const fetchPromise = (async () => {
       const scopesSnap = await db.collection('memoryScopes').get().catch(() => null);
-      if (!scopesSnap || scopesSnap.empty) return [];
+      if (!scopesSnap || scopesSnap.empty) return aggregated;
       
       const results = await Promise.all(
         scopesSnap.docs.map(async (scopeDoc) => {
@@ -414,14 +434,19 @@ export async function getAllUserServerMemories(userId) {
           return null;
         })
       );
-      return results.filter(Boolean);
+      const cloudMemories = results.filter(Boolean);
+      const map = new Map();
+      for (const m of [...aggregated, ...cloudMemories]) {
+        map.set(m.serverId, m);
+      }
+      return Array.from(map.values());
     })();
 
-    const timeoutPromise = new Promise(resolve => setTimeout(() => resolve([]), 6000));
+    const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(aggregated), 6000));
     return await Promise.race([fetchPromise, timeoutPromise]);
   } catch (err) {
     console.error('[memory] Error en getAllUserServerMemories:', err.message);
-    return [];
+    return aggregated;
   }
 }
 
