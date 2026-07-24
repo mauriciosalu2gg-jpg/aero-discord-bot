@@ -878,7 +878,10 @@ async function runAutoModeration(message) {
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
-  const isMentioned = message.mentions.has(client.user);
+  
+  const isDirectMention = message.mentions.has(client.user);
+  const isNameCalled = /\b(novarito|nova|novaro)\b/i.test(message.content);
+  const isMentioned = isDirectMention || isNameCalled;
   const isReplyToBot = message.reference?.messageId
     ? await message.fetchReference().then(ref => ref.author?.id === client.user.id).catch(() => false)
     : false;
@@ -1005,11 +1008,19 @@ client.on('messageCreate', async (message) => {
     return; // Ya fue advertido, ignorar en silencio
   }
 
+  if (!global.activeUserProcessesTimes) global.activeUserProcessesTimes = new Map();
+
   if (activeUserProcesses.has(message.author.id)) {
-    await message.reply("⏳ Espera un momento a que termine de responder tu mensaje anterior.");
-    return;
+    const lastTime = global.activeUserProcessesTimes.get(message.author.id) || 0;
+    if (Date.now() - lastTime > 30000) {
+      activeUserProcesses.delete(message.author.id);
+    } else {
+      await message.reply("⏳ Espera un momento a que termine de responder tu mensaje anterior.").catch(() => {});
+      return;
+    }
   }
   activeUserProcesses.add(message.author.id);
+  global.activeUserProcessesTimes.set(message.author.id, Date.now());
   // ----------------------------------
 
   try {
