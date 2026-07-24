@@ -39,7 +39,7 @@ let lastAIResponse = { provider: 'ninguno', model: 'ninguno' };
 const EMOJIS = {
   thinking: '<:pensar:1527960192787025920>',      // 💡  Generando respuesta (Chat Engine)
   memory:   '<:servidor:1527959988184682506>',    // 📚  Memory Engine activo
-  recall:   '<:hojita:1527960400975630436>',      // 🧠  Recuperando desde memoria
+  recall:   '<:recuperar:1528121773764116651>',   // 🔄  Recuperando desde memoria
   save:     '<:hojita:1527960400975630436>',      // 📝  Guardando en memoria
   done:     '<:aceptar:1527959750443012187>',     // ✅  Operación completada
   error:    '<:equis:1527958663485198386>',       // ❌  Error
@@ -113,19 +113,21 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function startThinkingStatus(message) {
-  const phrases = ['Pensando', 'Analizando', 'Procesando', 'Reflexionando', 'Formulando', 'Considerando'];
-  const state = { msg: null, interval: null, start: Date.now() };
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+async function startThinkingStatus(message, { emoji = EMOJIS.thinking, label = 'Pensando' } = {}) {
+  const state = { msg: null, interval: null, start: Date.now(), emoji, label, dots: 0 };
+
+  const render = () => `${state.emoji} *${state.label}${'.'.repeat(state.dots)}*`;
 
   try {
-    state.msg = await message.channel.send(`${EMOJIS.thinking} *Pensando*`);
-    let dotCount = 0;
-    let phraseIdx = 0;
+    state.msg = await message.channel.send(`${state.emoji} *${state.label}*`);
     state.interval = setInterval(() => {
-      dotCount = (dotCount % 3) + 1;
-      if (dotCount === 3) phraseIdx = (phraseIdx + 1) % phrases.length;
-      state.msg.edit(`${EMOJIS.thinking} *${phrases[phraseIdx]}${'.'.repeat(dotCount)}*`).catch(() => null);
-    }, 700);
+      state.dots = (state.dots % 3) + 1;
+      state.msg.edit(render()).catch(() => null);
+    }, 1600);
   } catch (err) {
     console.warn('[ui] No se pudo enviar estado de pensamiento:', err.message);
   }
@@ -133,13 +135,51 @@ async function startThinkingStatus(message) {
   return state;
 }
 
-async function runExplicitMemoryUi(message, content, mode, details = '') {
+async function updateThinkingStatus(state, { emoji, label } = {}) {
+  if (!state?.msg) return;
+  if (emoji) state.emoji = emoji;
+  if (label) state.label = label;
+  state.dots = 0;
+  await state.msg.edit(`${state.emoji} *${state.label}*`).catch(() => null);
+}
+
+function memoryUiTiming(content, mode) {
+  const size = String(content || '').length;
+  const largeBoost = clamp(Math.floor(size / 900), 0, 8);
+  return {
+    introMs: mode === 'save' ? 2200 + largeBoost * 450 : 1800,
+    stepMs: mode === 'save' ? 1800 + largeBoost * 200 : 1600,
+    intervalMs: 2000,
+  };
+}
+
+function computeExtraThinkingDelay({ baseMs, hasWebContext, intent, memoryIntent, contentLength }) {
+  let minMs = baseMs;
+  let maxMs = baseMs;
+
+  if (hasWebContext) {
+    minMs = 4000;
+    maxMs = 20000;
+  } else if (intent === 'document') {
+    minMs = 4500;
+    maxMs = 18000;
+  } else if (memoryIntent?.isExplicit) {
+    minMs = 3500;
+    maxMs = 14000;
+  }
+
+  if (contentLength > 2500) maxMs = Math.max(maxMs, 16000);
+  if (maxMs <= baseMs) return baseMs;
+  return clamp(baseMs + Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs, minMs, maxMs);
+}
+
+async function runExplicitMemoryUi(message, content, mode, details = '', thinkingState = null) {
   let memoryMsg = null;
   let interval = null;
-  let phaseInterval = null;
   const phaseLabel = mode === 'save' ? 'Guardando memoria' : 'Recuperando memoria';
   const phaseEmoji = mode === 'save' ? EMOJIS.save : EMOJIS.recall;
   const finalLabel = mode === 'save' ? 'Memoria actualizada' : 'Memoria recuperada';
+  const timing = memoryUiTiming(content, mode);
 
   try {
     memoryMsg = await message.channel.send(`-# ${EMOJIS.memory} *Managing memory*`);
@@ -147,34 +187,44 @@ async function runExplicitMemoryUi(message, content, mode, details = '') {
     interval = setInterval(() => {
       dot = (dot % 3) + 1;
       memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory${'.'.repeat(dot)}*`).catch(() => null);
-    }, 700);
+    }, timing.intervalMs);
 
-    await sleep(900);
+    await sleep(timing.introMs);
     clearInterval(interval);
 
     let phaseDot = 0;
-    phaseInterval = setInterval(() => {
+    const phaseInterval = setInterval(() => {
       phaseDot = (phaseDot % 3) + 1;
       memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory.*\n-# ${phaseEmoji} *${phaseLabel}${'.'.repeat(phaseDot)}*`).catch(() => null);
-    }, 700);
+    }, timing.intervalMs);
 
     const steps = await generateMemoryStepsAI(content, mode);
     clearInterval(phaseInterval);
 
     let stepsText = '';
     if (details) {
-      stepsText += `\n-# • Contenido: ${details}`;
+      stepsText += `\n-# ${EMOJIS.save} Contenido: ${details}`; // hojita para detalles
     }
+    
+    // 50/50 bullet style
+    const useArrows = Math.random() < 0.5;
+    const bullet = useArrows ? '↳' : '✧';
+
     for (const step of steps) {
-      stepsText += `\n-# • ${step}`;
+      stepsText += `\n-# ${bullet} ${step}`;
       await memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory.*\n-# ${phaseEmoji} *${phaseLabel}.*${stepsText}`).catch(() => null);
-      await sleep(550);
+      await sleep(timing.stepMs);
     }
 
     await memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory.*\n-# ${phaseEmoji} *${phaseLabel}.*${stepsText}\n-# ${EMOJIS.done} *${finalLabel}*`).catch(() => null);
+    
+    // Auto-compact after 2 minutes
+    setTimeout(async () => {
+      await memoryMsg.edit(`-# ${EMOJIS.done} *${finalLabel}*`).catch(() => null);
+    }, 120000);
+
   } catch (err) {
     if (interval) clearInterval(interval);
-    if (phaseInterval) clearInterval(phaseInterval);
     console.warn('[memory-ui] Error en UI de memoria explícita:', err.message);
     if (memoryMsg) await memoryMsg.edit(`-# ${EMOJIS.error} *Error al procesar la memoria.*`).catch(() => null);
   }
@@ -663,6 +713,10 @@ client.on('messageCreate', async (message) => {
     let thinkingInterval = null;
     let thinkingStart = Date.now();
     let activeTopicLabel = 'charla';
+    const thinkingState = await startThinkingStatus(message);
+    thinkingMsg = thinkingState.msg;
+    thinkingInterval = thinkingState.interval;
+    thinkingStart = thinkingState.start;
 
     const memory = await getUserMemory(message.author.id, guildId, userConfig.mode, channelId);
     
@@ -788,19 +842,23 @@ client.on('messageCreate', async (message) => {
         console.warn('[identity] No se pudieron guardar hechos por ID:', err.message);
       });
       const details = explicitFacts.join(' | ').slice(0, 260);
+      
+      // Artificial thinking delay for explicit memory
+      const extraThinkingDelay = computeExtraThinkingDelay({ baseMs: 1600, hasWebContext: false, intent: 'chat', memoryIntent: { isExplicit: true }, contentLength: finalContent.length });
+      if (extraThinkingDelay > 1600) await sleep(extraThinkingDelay);
+
       await Promise.all([
         saveUserMemory(message.author.id, guildId, userConfig.mode, memory, channelId),
-        runExplicitMemoryUi(message, finalContent, 'save', details),
+        runExplicitMemoryUi(message, finalContent, 'save', details, thinkingState),
       ]);
     } else if (memoryIntent.isRecall && userConfig.mode !== 'off') {
       const details = memory.isGlobal ? 'Buscando en memoria global de servidores y canales' : 'Buscando en memoria local de este servidor';
-      await runExplicitMemoryUi(message, finalContent, 'recall', details);
-    }
+      
+      const extraThinkingDelay = computeExtraThinkingDelay({ baseMs: 1600, hasWebContext: false, intent: 'chat', memoryIntent: { isExplicit: true }, contentLength: finalContent.length });
+      if (extraThinkingDelay > 1600) await sleep(extraThinkingDelay);
 
-    const thinkingState = await startThinkingStatus(message);
-    thinkingMsg = thinkingState.msg;
-    thinkingInterval = thinkingState.interval;
-    thinkingStart = thinkingState.start;
+      await runExplicitMemoryUi(message, finalContent, 'recall', details, thinkingState);
+    }
 
     // 2. Contexto y mood
     const context = analyzeContext(memory.messages, message, client.user.id);
@@ -863,23 +921,13 @@ client.on('messageCreate', async (message) => {
     });
 
     // La respuesta no se envia hasta que el guardado de memoria del turno termina.
+    let triggerGhostMemory = false;
     try {
       const result = await saveUserMemory(message.author.id, guildId, userConfig.mode, memory, channelId);
 
       // Memoria automática compacta: solo aparece si hubo compactación real y nadie la pidió.
       if (result?.summarized && !memoryIntent.isExplicit) {
-        let silentMsg = null;
-        try {
-          silentMsg = await message.channel.send(`-# ${EMOJIS.memory} *Managing memory*`);
-          let sDot = 0;
-          const sInt = setInterval(() => {
-            sDot = (sDot % 3) + 1;
-            silentMsg.edit(`-# ${EMOJIS.memory} *Managing memory${'.'.repeat(sDot)}*`).catch(() => null);
-          }, 700);
-          await sleep(2500);
-          clearInterval(sInt);
-          await silentMsg.edit(`-# ${EMOJIS.done} *Memoria actualizada*`).catch(() => null);
-        } catch { /* silencioso */ }
+        triggerGhostMemory = true;
       }
     } catch (err) {
       console.error('[memory] Error guardando memoria:', err.message);
@@ -935,6 +983,32 @@ client.on('messageCreate', async (message) => {
         await new Promise(r => setTimeout(r, delayBetweenParts()));
         await message.channel.sendTyping().catch(() => {});
       }
+    }
+
+    // Ghost effect for implicit memory
+    if (triggerGhostMemory && thinkingMsg && firstMessageEdited) {
+      (async () => {
+        try {
+          // Extraemos el prefijo de la última chunk (sin el "Pensó por")
+          const lastChunk = parts[parts.length - 1].match(/[\s\S]{1,1900}/g)?.pop() || '...';
+          const baseText = `${pingPrefix}${lastChunk}`;
+          
+          await sleep(1500);
+          // 1. Muta a Managing memory
+          await thinkingMsg.edit(`${baseText}\n-# ${EMOJIS.memory} *Managing memory...*`).catch(()=>null);
+          await sleep(2000);
+          // 2. Muta a paso compacto
+          await thinkingMsg.edit(`${baseText}\n-# ↳ guardando historial...`).catch(()=>null);
+          await sleep(3500);
+          // 3. Muta a completado
+          await thinkingMsg.edit(`${baseText}\n-# ${EMOJIS.done} *Memoria actualizada*`).catch(()=>null);
+          
+          // 4. Espera 1 minuto
+          await sleep(60000);
+          // 5. Regresa a Pensó por original
+          await thinkingMsg.edit(`${baseText}\n-# ${EMOJIS.thinking} *Pensó por ${thinkingTime}*`).catch(()=>null);
+        } catch(e) {}
+      })();
     }
 
     config.updateBotStatus(client, lastAIResponse);

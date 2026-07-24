@@ -4,68 +4,70 @@ export const commandDefinitions = [
   new SlashCommandBuilder()
     .setName('ai')
     .setDescription('Centro de control de Inteligencia Artificial')
-    .addStringOption(opt => opt
+    .addSubcommand(sub => sub
+      .setName('chat')
+      .setDescription('Habla directamente con la IA')
+      .addStringOption(opt => opt.setName('mensaje').setDescription('Lo que quieres decirle a Novarito').setRequired(true))
+    )
+    .addSubcommand(sub => sub
       .setName('proveedor')
       .setDescription('Cambia el proveedor activo de IA')
-      .setRequired(false)
-      .addChoices(
-        { name: 'Auto (rotacion normal)', value: 'auto' },
-        { name: 'OpenRouter', value: 'openrouter' },
-        { name: 'Groq', value: 'groq' },
-        { name: 'Google Gemini', value: 'gemini' },
-        { name: 'Anthropic (Claude)', value: 'anthropic' },
-        { name: 'OpenAI', value: 'openai' },
+      .addStringOption(opt => opt
+        .setName('nombre')
+        .setDescription('Nombre del proveedor')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Auto (rotacion normal)', value: 'auto' },
+          { name: 'OpenRouter', value: 'openrouter' },
+          { name: 'Groq', value: 'groq' },
+          { name: 'Google Gemini', value: 'gemini' },
+          { name: 'Anthropic (Claude)', value: 'anthropic' },
+          { name: 'OpenAI', value: 'openai' },
+        )
       )
     )
-    .addBooleanOption(opt => opt
+    .addSubcommand(sub => sub
       .setName('estado')
       .setDescription('Muestra el estado, latencia, modelo y uso de memoria actual')
-      .setRequired(false)
     )
-    .addStringOption(opt => opt
+    .addSubcommand(sub => sub
       .setName('imaginar')
       .setDescription('Genera una imagen a partir del texto ingresado')
-      .setRequired(false)
+      .addStringOption(opt => opt.setName('prompt').setDescription('Lo que quieres imaginar').setRequired(true))
     )
-    .addBooleanOption(opt => opt
+    .addSubcommand(sub => sub
       .setName('limpiar_memoria')
       .setDescription('Borra todo el historial de mensajes de la IA')
-      .setRequired(false)
     )
-    .addStringOption(opt => opt
+    .addSubcommand(sub => sub
       .setName('modo_memoria')
       .setDescription('Cambia el modo de retención de memoria')
-      .setRequired(false)
-      .addChoices({ name: 'Local (Por servidor)', value: 'local' }, { name: 'Global (Compartida)', value: 'global' })
+      .addStringOption(opt => opt
+        .setName('nivel')
+        .setDescription('Nivel de retención')
+        .setRequired(true)
+        .addChoices({ name: 'Local (Por servidor)', value: 'local' }, { name: 'Global (Compartida)', value: 'global' })
+      )
     )
-    .addBooleanOption(opt => opt
-      .setName('memoria_global')
-      .setDescription('Activa memoria global compartida entre servidores')
-      .setRequired(false)
+    .addSubcommand(sub => sub
+      .setName('nombre_y_pronombre')
+      .setDescription('Dile a la IA cómo quieres que te llame y tus pronombres')
+      .addStringOption(opt => opt.setName('nombre').setDescription('Tu nombre').setRequired(true))
+      .addStringOption(opt => opt.setName('pronombre').setDescription('Tu pronombre').setRequired(false))
     )
-    .addStringOption(opt => opt
+    .addSubcommand(sub => sub
       .setName('editar_personalidad')
-      .setDescription('Dile a la IA cómo quieres que te llame')
-      .setRequired(false)
+      .setDescription('Cambia la personalidad del bot')
+      .addStringOption(opt => opt.setName('rasgo').setDescription('Rasgo (ej: enojado, gracioso)').setRequired(true))
     )
-    .addBooleanOption(opt => opt
+    .addSubcommand(sub => sub
       .setName('ver_personalidad')
-      .setDescription('Ver cómo la IA te recuerda actualmente')
-      .setRequired(false)
+      .setDescription('Muestra la personalidad del bot')
     )
-    .addUserOption(opt => opt
+    .addSubcommand(sub => sub
       .setName('pts_reset')
-      .setDescription('Resetear puntos de moderación de un usuario (Solo Owners)')
-      .setRequired(false)
-    ),
-
-  new SlashCommandBuilder()
-    .setName('ia')
-    .setDescription('Atajo de memoria para la IA')
-    .addBooleanOption(opt => opt
-      .setName('memoria_global')
-      .setDescription('Activa memoria global compartida entre servidores')
-      .setRequired(false)
+      .setDescription('Resetear puntos de moderación de un usuario (Alto mando)')
+      .addUserOption(opt => opt.setName('usuario').setDescription('Usuario a perdonar').setRequired(true))
     ),
   
   new SlashCommandBuilder()
