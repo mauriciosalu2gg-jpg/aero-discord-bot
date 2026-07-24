@@ -916,46 +916,29 @@ async function runAutoModeration(message) {
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
   
-  const isDirectMention = message.mentions.has(client.user);
+  const botId = client.user?.id;
+  const isDirectMention = Boolean(botId && (message.mentions.users.has(botId) || message.content.includes(botId)));
   const isNameCalled = /\b(novarito|nova|novaro)\b/i.test(message.content);
   const isMentioned = isDirectMention || isNameCalled;
   const isReplyToBot = message.reference?.messageId
-    ? await message.fetchReference().then(ref => ref.author?.id === client.user.id).catch(() => false)
+    ? await message.fetchReference().then(ref => ref.author?.id === botId).catch(() => false)
     : false;
   const isDM = message.channel.type === 1;
+  const wasExplicitlyCalled = isMentioned || isReplyToBot || isDM;
 
   const guildId = message.guild?.id;
   const channelId = message.channelId;
 
-  // Registramos actividad en CUALQUIER mensaje del canal (no solo cuando
-  // le hablan al bot), para que el reloj de inactividad sea real.
   trackedChannels.set(channelId, { guildId });
   markActivity(channelId);
 
-  // Si este mensaje es la respuesta que un /funador en curso esta
-  // esperando de esta persona (consentimiento, abogados, interrogatorio,
-  // etc), NO debe pasar a moderacion ni a la IA normal: funadorSession.js
-  // ya lo esta escuchando con su propio awaitMessages/awaitReactions.
-  // Sin este corte, el boton "Responder" de Discord (que menciona
-  // implicitamente al bot) disparaba ADEMAS una respuesta de charla
-  // normal, pisando el flujo del juicio.
   if (isPendingFunadorAnswer(channelId, message.author.id)) {
-    console.log('[msg] descartado: esperando respuesta de sesion funador');
     return;
   }
 
-  // Moderacion automatica: corre siempre que este activa, sin importar si
-  // le hablan al bot o no.
-  const wasSanctioned = await runAutoModeration(message).catch(err => {
-    console.error('[moderation]', err.message);
-    return false;
-  });
-  if (wasSanctioned) {
-    console.log('[msg] descartado: se aplico sancion de moderacion');
-    return;
-  }
+  const wasSanctioned = await runAutoModeration(message).catch(() => false);
+  if (wasSanctioned) return;
 
-  // Comandos de comportamiento e instrucciones de administrador
   const isAuthorizedAdmin = isOwner(message.author) || isSubCreator(message.author) || isAdminOrHigher(message.author) || message.member?.permissions?.has?.('Administrator');
 
   if (isAuthorizedAdmin) {
@@ -967,7 +950,6 @@ client.on('messageCreate', async (message) => {
       await setFlag(guildId, 'factsAutoplay', true);
     }
 
-    // Control de pasos de memoria (compacto vs detallado) por Admin/Owner
     const rawContent = message.content.toLowerCase();
     if (/no (muestres|pongas|enseñes|saques|hagas) (los )?pasos|oculta (los )?pasos|sin pasos|compacta(damente|do)?|pasos (de memoria )?desactivados?|quita (los )?pasos/i.test(rawContent)) {
       await setFlag(guildId, 'verboseMemorySteps', false);
@@ -978,19 +960,14 @@ client.on('messageCreate', async (message) => {
 
   const flags = getFlags(guildId);
 
-  // Defensa de creators: si alguien habla negativamente de Lara o Theo
-  // (sin mencionar al bot), el bot puede intervenir para defender
   const PROTECTED_NAMES_RE = /\b(lara|le0[_\s]?lara|theo|theogr|gio|lag|larita)\b/i;
   const NEGATIVE_SENTIMENT_RE = /\b(odi[ao]|maldita|culpa|idiota|tonta|basura|pendet|inutil|inútil|no sirve|pésima|nefasta|estup|shut up|calla|callat|peor|porqu[eé] no|mentir|minti|feo|horrible|horrible)\b/i;
   const isDefenseNeeded = !isMentioned && !isReplyToBot && !isDM && !flags.forceTalk &&
     PROTECTED_NAMES_RE.test(message.content) && NEGATIVE_SENTIMENT_RE.test(message.content);
 
-  // ambientMode/forceTalk: el bot puede responder sin que lo mencionen.
-  // forceTalk responde a TODO; ambientMode solo mete comentarios random
-  // via el watcher de inactividad ya existente (no cambia este flujo).
-  const shouldRespond = isMentioned || isReplyToBot || isDM || flags.forceTalk || isDefenseNeeded;
+  const isBotChannel = Boolean(message.channel?.name && /bot|comando|chat|general|pruebas|comunidad|debates/i.test(message.channel.name));
+  const shouldRespond = isMentioned || isReplyToBot || isDM || isBotChannel || flags.forceTalk || isDefenseNeeded;
   if (!shouldRespond) return;
-  console.log(`[msg] shouldRespond=true mentioned=${isMentioned} reply=${isReplyToBot} dm=${isDM} forceTalk=${flags.forceTalk}`);
 
   if (guildId) config.registerGuild(message.guild);
 
@@ -1265,6 +1242,13 @@ client.on('messageCreate', async (message) => {
       if (thinkingState) thinkingState.memoryStatusLine = errStatus;
       response = {
         text: `Neta larita, estuve revisando toda mi memoria global y no tengo datos u hechos guardados de otros servidores todavía.`,
+        provider: 'MemoryEngine',
+        model: 'DirectRecall'
+      };
+    } else if (memoryIntent?.isRecall && rememberedFacts.length > 0 && /qu[eé]\s+(recuerdas|sabes|tienes|guardaste)/i.test(content)) {
+      const formattedFactsList = rememberedFacts.map(f => `• ${f}`).join('\n');
+      response = {
+        text: `Neta! De mi memoria global y de lo que me has dicho tengo bien guardado:\n${formattedFactsList}`,
         provider: 'MemoryEngine',
         model: 'DirectRecall'
       };
