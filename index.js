@@ -98,6 +98,16 @@ function detectMemoryIntent(content) {
   return { isSave, isRecall, isExplicit: isSave || isRecall };
 }
 
+function extractTopicKeyword(content) {
+  const clean = String(content || '').replace(/[?/!.,;:]/g, ' ').replace(/\s+/g, ' ').trim();
+  const stopWords = new Set(['dime', 'que', 'recuerdas', 'sabes', 'tienes', 'busca', 'mi', 'tu', 'la', 'de', 'en', 'los', 'las', 'el', 'un', 'una', 'por', 'favor', 'guarda', 'recordar']);
+  const words = clean.split(' ').filter(w => w.length > 2 && !stopWords.has(w.toLowerCase()));
+  if (words.length > 0) {
+    return words.slice(0, 3).join(' ');
+  }
+  return 'temas y conversaciones';
+}
+
 /**
  * Genera pasos de razonamiento dinámicos via Memory Engine (IA).
  * Para claude-style retorna objetos {type:'step'|'think', text}.
@@ -107,34 +117,35 @@ function detectMemoryIntent(content) {
  * @param {'arrows'|'stars'|'claude'} bulletStyle
  */
 async function generateMemoryStepsAI(content, mode, bulletStyle = 'arrows') {
+  const topic = extractTopicKeyword(content);
+
   const fallbackSave = [
-    'Analizando información importante',
-    'Extrayendo datos relevantes del usuario',
-    'Creando resumen compacto',
-    'Actualizando memoria a largo plazo',
+    `Identificando información clave: "${topic.slice(0, 30)}"`,
+    `Indexando datos en el perfil de memoria global`,
+    `Asociando preferencias y referencias al usuario`,
+    `Guardando registro de forma permanente`,
   ];
   const fallbackRecall = [
-    'Revisando conversaciones relacionadas',
-    'Buscando preferencias conocidas',
-    'Comparando información previa',
-    'Identificando datos importantes',
-    'Preparando contexto relevante',
+    `Consultando índice global de memoria sobre "${topic.slice(0, 30)}"`,
+    `Escaneando registros de servidores y canales guardados`,
+    `Verificando hechos confirmados e identidades del usuario`,
+    `Sintetizando información verified encontrada`,
   ];
   const fallbackClaudeSave = [
-    { type: 'step', text: 'Analizando el contexto e información importante' },
-    { type: 'think', text: 'Me doy cuenta de que debo conservar este dato de forma permanente para recordar lo que me pide el usuario.' },
-    { type: 'step', text: 'Extrayendo detalles clave y referencias' },
-    { type: 'think', text: 'Organizo las preferencias e identidades mencionadas para asociarlas correctamente.' },
-    { type: 'step', text: 'Actualizando registros en la memoria a largo plazo' },
-    { type: 'think', text: 'Guardo la referencia de forma segura para tenerla disponible en nuestras próximas pláticas.' },
+    { type: 'step', text: `Identificando información relevante sobre "${topic.slice(0, 30)}"` },
+    { type: 'think', text: `Analizo la frase del usuario para estructurar los datos clave que deben conservarse.` },
+    { type: 'step', text: `Indexando registros en el archivo global del servidor` },
+    { type: 'think', text: `Asocio las referencias para tenerlas disponibles de inmediato en cualquier canal.` },
+    { type: 'step', text: `Confirmando almacenamiento permanente` },
+    { type: 'think', text: `Guardo la información en la base de datos de memoria sin alteraciones.` },
   ];
   const fallbackClaudeRecall = [
-    { type: 'step', text: 'Revisando conversaciones e historial previo' },
-    { type: 'think', text: 'Busco en mis archivos locales y globales los datos o preferencias guardadas anteriormente.' },
-    { type: 'step', text: 'Filtrando referencias e información relevante' },
-    { type: 'think', text: 'Identifico los puntos clave que coinciden exactamente con lo que me está preguntando.' },
-    { type: 'step', text: 'Sintetizando la información para la respuesta' },
-    { type: 'think', text: 'Preparo una respuesta clara y concisa basada en lo que tengo registrado.' },
+    { type: 'step', text: `Escaneando base de datos de memoria para "${topic.slice(0, 30)}"` },
+    { type: 'think', text: `Examino los índices locales y globales buscando registros exactos sobre esta consulta.` },
+    { type: 'step', text: `Filtrando hechos verificados y referencias cruzadas` },
+    { type: 'think', text: `Separo los datos confirmados de cualquier ambigüedad para asegurar precisión.` },
+    { type: 'step', text: `Consolidando informe de memoria` },
+    { type: 'think', text: `Organizo los hallazgos reales para entregárselos al asistente en tiempo real.` },
   ];
 
   if (!isMemoryEngineAvailable()) {
@@ -145,17 +156,17 @@ async function generateMemoryStepsAI(content, mode, bulletStyle = 'arrows') {
   let prompt;
   if (bulletStyle === 'claude') {
     prompt = mode === 'save'
-      ? `El usuario dijo: "${content.slice(0, 300)}". Genera 4 a 5 pares DETALLADOS de razonamiento interno de un asistente AI guardando esta info en memoria. Usa EXACTAMENTE este formato alternando líneas:\nPASO: [acción en gerundio, máx 8 palabras]\nRAZON: [pensamiento interno reflexivo en primera persona: qué hace, encuentra o decide, 1-2 oraciones cortas]. Empieza directamente con PASO:.`
-      : `El usuario dijo: "${content.slice(0, 300)}". Genera 4 a 5 pares DETALLADOS de razonamiento interno de un asistente AI recuperando info de memoria. Usa EXACTAMENTE este formato alternando líneas:\nPASO: [acción en gerundio, máx 8 palabras]\nRAZON: [pensamiento interno reflexivo en primera persona: qué busca o concluye, 1-2 oraciones cortas]. Empieza con PASO:.`;
+      ? `El usuario dijo: "${content.slice(0, 300)}". Genera 3 a 4 pares TÉCNICOS Y CONTEXTUALES sobre guardar el tema "${topic}". Formato:\nPASO: [acción técnica en gerundio sobre ${topic}]\nRAZON: [explicación lógica de la acción].`
+      : `El usuario dijo: "${content.slice(0, 300)}". Genera 3 a 4 pares TÉCNICOS Y CONTEXTUALES sobre buscar el tema "${topic}". Formato:\nPASO: [acción técnica de búsqueda sobre ${topic}]\nRAZON: [explicación lógica de la búsqueda].`;
   } else {
     prompt = mode === 'save'
-      ? `El usuario dijo: "${content.slice(0, 200)}". Genera 4 a 5 pasos paso a paso (máximo 5 palabras por paso en gerundio) de lo que harías para guardar esta info. Uno por línea, sin viñetas.`
-      : `El usuario dijo: "${content.slice(0, 200)}". Genera 4 a 5 pasos paso a paso (máximo 5 palabras por paso en gerundio) de lo que harías para consultar la memoria. Uno por línea, sin viñetas.`;
+      ? `Genera 4 pasos técnicos en gerundio de cómo guardar la info sobre "${topic}". Máximo 6 palabras por paso. Sin viñetas.`
+      : `Genera 4 pasos técnicos en gerundio de cómo consultar la memoria sobre "${topic}". Máximo 6 palabras por paso. Sin viñetas.`;
   }
 
   try {
-    const resPromise = askMemoryEngine('topic', [{ role: 'user', content: prompt }], 0.4).catch(() => null);
-    const timeoutPromise = sleep(3500).then(() => null);
+    const resPromise = askMemoryEngine('topic', [{ role: 'user', content: prompt }], 0.3).catch(() => null);
+    const timeoutPromise = sleep(3000).then(() => null);
     const res = await Promise.race([resPromise, timeoutPromise]);
 
     if (!res) {
@@ -164,7 +175,7 @@ async function generateMemoryStepsAI(content, mode, bulletStyle = 'arrows') {
     }
 
     if (bulletStyle === 'claude') {
-      const lines = res.split('\n').map(s => s.trim()).filter(s => s.length > 2);
+      const lines = res.split('\n').map(l => l.trim()).filter(Boolean);
       const parsed = [];
       for (const line of lines) {
         if (/^PASO:\s*/i.test(line)) {
@@ -173,10 +184,10 @@ async function generateMemoryStepsAI(content, mode, bulletStyle = 'arrows') {
           parsed.push({ type: 'think', text: line.replace(/^RAZ[OÓ]N:\s*/i, '').slice(0, 250) });
         }
       }
-      return parsed.length >= 2 ? parsed.slice(0, 10) : (mode === 'save' ? fallbackClaudeSave : fallbackClaudeRecall);
+      return parsed.length >= 2 ? parsed.slice(0, 8) : (mode === 'save' ? fallbackClaudeSave : fallbackClaudeRecall);
     }
 
-    const steps = res.split('\n').map(s => s.trim().replace(/^[-*•\d\.\s]+/, '').slice(0, 150)).filter(s => s.length > 3).slice(0, 6);
+    const steps = res.split('\n').map(s => s.trim().replace(/^[-*•\d\.\s]+/, '').slice(0, 150)).filter(s => s.length > 3 && !/ojo|siento|tranquilo|sensaciones/i.test(s)).slice(0, 5);
     return steps.length >= 2 ? steps : (mode === 'save' ? fallbackSave : fallbackRecall);
   } catch {
     if (bulletStyle === 'claude') return mode === 'save' ? fallbackClaudeSave : fallbackClaudeRecall;
