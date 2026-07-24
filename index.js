@@ -72,8 +72,8 @@ function formatThinkingTime(ms) {
  * isSave: quiere guardar algo  |  isRecall: quiere recuperar algo
  */
 function detectMemoryIntent(content) {
-  const isSave   = /recuerda\s+(que|esto|eso)|guard[aá]?(?:lo|la|me|rlo|rla)?(?:\s+(?:de|en|a|para))?\s+(?:tu\s+)?(?:memoria\s+)?(?:que|esto|eso|el chat|la conversaci[oó]n|este pdf|esta imagen|este link|este enlace|todo esto)|guard[aá]?(?:lo|la|me|rlo|rla)?.{0,40}\b(?:memoria|chat|conversaci[oó]n|pdf|imagen|link|enlace)\b|memoriza|no olvides|acu[eé]rdate\s+de/i.test(content);
-  const isRecall = /qu[eé]\s+recuerdas|qu[eé]\s+sabes de m[ií]|busca en (tu|mi|la) memoria|qu[eé]\s+guardaste|tienes\s+memoria|memoria global|memoria_global/i.test(content);
+  const isRecall = /qu[eé]\s+(recuerdas|sabes|tienes)|dime\s+(qu[eé]|lo\s+que)\s+(tienes|hay|guardaste|recuerdas)|qu[eé]\s+guardaste|busca\s+en\s+(tu|mi|la)?\s*memoria|tienes\s+guardado|mu[eé]strame\s+tu\s+memoria|memoria\s+global|memoria_global/i.test(content);
+  const isSave   = !isRecall && /recuerda\s+(que|esto|eso)|guard[aá]?(?:lo|la|me|rlo|rla)?(?:\s+(?:de|en|a|para))?\s+(?:tu\s+)?(?:memoria\s+)?(?:que|esto|eso|el chat|la conversaci[oó]n|este pdf|esta imagen|este link|este enlace|todo esto)|guard[aá]?(?:lo|la|me|rlo|rla)?.{0,40}\b(?:memoria|chat|conversaci[oó]n|pdf|imagen|link|enlace)\b|memoriza|no olvides|acu[eé]rdate\s+de/i.test(content);
   return { isSave, isRecall, isExplicit: isSave || isRecall };
 }
 
@@ -103,20 +103,18 @@ async function generateMemoryStepsAI(content, mode, bulletStyle = 'arrows') {
 
   let prompt;
   if (bulletStyle === 'claude') {
-    // Claude-style: genera pares PASO/RAZON alternados, hasta 25 pares
     prompt = mode === 'save'
-      ? `El usuario dijo: "${content.slice(0, 300)}". Genera hasta 25 pares de razonamiento interno de un asistente AI guardando esta info en su memoria. Usa EXACTAMENTE este formato alternando lineas:\nPASO: [acción en gerundio, máx 8 palabras]\nRAZON: [pensamiento interno: qué hace, qué encuentra o decide, 1-2 oraciones naturales en primera persona]\nRepite el patron PASO/RAZON hasta completar el proceso. Empieza directamente con PASO: sin introducción.`
-      : `El usuario dijo: "${content.slice(0, 300)}". Genera hasta 25 pares de razonamiento interno de un asistente AI recuperando info de su memoria. Usa EXACTAMENTE este formato:\nPASO: [acción en gerundio, máx 8 palabras]\nRAZON: [pensamiento interno: qué busca, encuentra o concluye, 1-2 oraciones naturales en primera persona]\nRepite el patron PASO/RAZON. Empieza con PASO:.`;
+      ? `El usuario dijo: "${content.slice(0, 200)}". Genera MÁXIMO 3 a 4 pares RÁPIDOS de razonamiento interno (PASO/RAZON) guardando info en memoria. Usa EXACTAMENTE este formato alternando líneas:\nPASO: [acción en gerundio, máx 6 palabras]\nRAZON: [pensamiento interno corto, 1 oración corta]. Empieza directamente con PASO:.`
+      : `El usuario dijo: "${content.slice(0, 200)}". Genera MÁXIMO 3 a 4 pares RÁPIDOS de razonamiento interno (PASO/RAZON) recuperando info de memoria. Usa EXACTAMENTE este formato:\nPASO: [acción en gerundio, máx 6 palabras]\nRAZON: [pensamiento interno corto, 1 oración corta]. Empieza con PASO:.`;
   } else {
-    // Arrows/stars: pasos ULTRACORTOS en gerundio
     prompt = mode === 'save'
-      ? `El usuario dijo: "${content.slice(0, 200)}". Genera hasta 10 pasos ULTRACORTOS (máximo 4 palabras por paso, en gerundio tipo "Analizando contexto", "Extrayendo preferencias") de lo que un asistente haría para guardar esta información en su memoria. Solo los pasos, uno por línea, sin viñetas ni números.`
-      : `El usuario dijo: "${content.slice(0, 200)}". Genera hasta 10 pasos ULTRACORTOS (máximo 4 palabras por paso, en gerundio tipo "Buscando referencias", "Consultando historial") de lo que un asistente haría para recuperar información de su memoria. Solo los pasos, uno por línea, sin viñetas ni números.`;
+      ? `El usuario dijo: "${content.slice(0, 200)}". Genera MÁXIMO 4 pasos ULTRACORTOS (máximo 4 palabras por paso en gerundio) de lo que harías para guardar esta info. Uno por línea, sin viñetas.`
+      : `El usuario dijo: "${content.slice(0, 200)}". Genera MÁXIMO 4 pasos ULTRACORTOS (máximo 4 palabras por paso en gerundio) de lo que harías para consultar la memoria. Uno por línea, sin viñetas.`;
   }
 
   try {
     const resPromise = askMemoryEngine('topic', [{ role: 'user', content: prompt }], 0.4).catch(() => null);
-    const timeoutPromise = sleep(3200).then(() => null);
+    const timeoutPromise = sleep(2200).then(() => null);
     const res = await Promise.race([resPromise, timeoutPromise]);
 
     if (!res) return mode === 'save' ? fallbackSave : fallbackRecall;
@@ -126,15 +124,15 @@ async function generateMemoryStepsAI(content, mode, bulletStyle = 'arrows') {
       const parsed = [];
       for (const line of lines) {
         if (/^PASO:\s*/i.test(line)) {
-          parsed.push({ type: 'step', text: line.replace(/^PASO:\s*/i, '').slice(0, 150) });
+          parsed.push({ type: 'step', text: line.replace(/^PASO:\s*/i, '').slice(0, 120) });
         } else if (/^RAZ[OÓ]N:\s*/i.test(line)) {
-          parsed.push({ type: 'think', text: line.replace(/^RAZ[OÓ]N:\s*/i, '').slice(0, 400) });
+          parsed.push({ type: 'think', text: line.replace(/^RAZ[OÓ]N:\s*/i, '').slice(0, 250) });
         }
       }
-      return parsed.length >= 2 ? parsed : fallbackSave.map(s => ({ type: 'step', text: s }));
+      return parsed.length >= 2 ? parsed.slice(0, 6) : fallbackSave.map(s => ({ type: 'step', text: s }));
     }
 
-    const steps = res.split('\n').map(s => s.trim().replace(/^[-*•\d\.\s]+/, '').slice(0, 200)).filter(s => s.length > 4).slice(0, 12);
+    const steps = res.split('\n').map(s => s.trim().replace(/^[-*•\d\.\s]+/, '').slice(0, 150)).filter(s => s.length > 3).slice(0, 4);
     return steps.length >= 2 ? steps : (mode === 'save' ? fallbackSave : fallbackRecall);
   } catch {
     return mode === 'save' ? fallbackSave : fallbackRecall;
@@ -183,12 +181,10 @@ async function updateThinkingStatus(state, { emoji, label } = {}) {
 }
 
 function memoryUiTiming(content, mode) {
-  const size = String(content || '').length;
-  const largeBoost = clamp(Math.floor(size / 900), 0, 8);
   return {
-    introMs: mode === 'save' ? 3000 + largeBoost * 600 : 2500,
-    stepMs: mode === 'save' ? 2800 + largeBoost * 400 : 2500,
-    intervalMs: 2000,
+    introMs: 600,
+    stepMs: 500,
+    intervalMs: 350,
   };
 }
 
