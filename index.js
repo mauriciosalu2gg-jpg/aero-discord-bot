@@ -1276,20 +1276,27 @@ client.on('messageCreate', async (message) => {
     config.updateBotStatus(client, lastAIResponse);
   } catch (err) {
     console.error('[error] Fallo completo de IA:', err.message);
+    const muletilla = pickMuletilla(channelId);
+    const isMemoryOp = memoryIntent?.isExplicit || memoryIntent?.isSave || memoryIntent?.isRecall;
+
+    if (isMemoryOp) {
+      return await message.reply(`${muletilla}, mi memoria ahorita anda al límite de espacio disponible o en pausa temporal. Prueba a guardar de nuevo en un ratito, sale?`).catch(() => null);
+    }
+
     if (err.attempts) {
       console.error('[error] Detalle de intentos fallidos:', JSON.stringify(err.attempts, null, 2));
       
-      const rateLimited = err.attempts.some(a => a.reason.toLowerCase().includes('rate limit') || a.reason.toLowerCase().includes('429'));
-      const unauthorized = err.attempts.some(a => a.reason.toLowerCase().includes('unauthorized') || a.reason.toLowerCase().includes('401'));
+      const rateLimited = err.attempts.some(a => a.reason?.toLowerCase().includes('rate limit') || a.reason?.toLowerCase().includes('429'));
+      const unauthorized = err.attempts.some(a => a.reason?.toLowerCase().includes('unauthorized') || a.reason?.toLowerCase().includes('401'));
       
       if (rateLimited) {
-        return await message.reply(`${pickMuletilla(channelId)}, mis proveedores de IA me han bloqueado temporalmente por exceso de uso (Rate Limited). Intenta de nuevo en unos minutos.`);
+        return await message.reply(`${muletilla}, mis proveedores de IA andan al límite por exceso de uso. Intenta de nuevo en un ratito.`).catch(() => null);
       }
       if (unauthorized) {
-        return await message.reply(`${pickMuletilla(channelId)}, mis llaves de API (API Keys) de la IA están caducadas o son inválidas. ¡El creador necesita actualizarlas en el panel de control!`);
+        return await message.reply(`${muletilla}, mis servicios de IA necesitan mantenimiento. Reintenta en un ratito.`).catch(() => null);
       }
     }
-    await message.reply(`${pickMuletilla(channelId)}, tengo problemas con la ia ahora mismo, intenta en un rato (Error: Todos los proveedores fallaron)`);
+    await message.reply(`${muletilla}, ando al límite de capacidad con la IA ahora mismo, intenta en un ratito, sale?`).catch(() => null);
   } finally {
     activeUserProcesses.delete(message.author.id);
   }
