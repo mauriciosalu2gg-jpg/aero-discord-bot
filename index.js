@@ -1056,6 +1056,8 @@ client.on('messageCreate', async (message) => {
     if (rememberedFacts.length > 0) {
       const modeLabel = userConfig.mode === 'global' ? 'GLOBAL (COMPARTIDA ENTRE TODOS LOS SERVIDORES Y CANALES)' : 'LOCAL (ESTE SERVIDOR)';
       summaryForAI += `\n\nDATOS Y HECHOS GUARDADOS EN TU MEMORIA DE ESTE USUARIO (MODO ${modeLabel}):\n- ${rememberedFacts.join('\n- ')}\n⚠️ INSTRUCCIÓN CRÍTICA DE MEMORIA: Los datos anteriores son HECHOS REALES que tú recuerdas de este usuario (incluyendo sus gustos, datos, archivos y pláticas de otros servidores en los que hablaron). ÚSALOS DIRECTAMENTE para responderle cuando te pregunte qué recuerdas o qué tienes guardado. NUNCA digas que no recuerdas nada si tienes datos en esta lista.`;
+    } else {
+      summaryForAI += `\n\nESTADO DE TU MEMORIA GLOBAL: No hay datos u hechos guardados aún de este usuario en otros servidores ni en este chat. Si el usuario te pregunta qué recuerdas de otros servidores o qué tienes guardado, responde con total sinceridad: "Neta, de otros servidores o chats aún no tengo datos guardados en mi memoria global, pero en cuanto platiquemos ahí lo voy registrando todo." NUNCA inventes recuerdos de juegos de Fortnite, servidores de música o historias falsas que jamás han sido guardadas.`;
     }
 
     // Inyectar identidades relevantes si el mensaje menciona a alguien

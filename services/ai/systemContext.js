@@ -35,10 +35,11 @@ function creatorPromptExtra({ isOwner = false, isSubCreator = false } = {}) {
 }
 
 function emojiGuideText(guild) {
-  if (!guild || !guild.emojis?.cache?.size) {
-    return 'Puedes usar emojis estándar de Discord (😊, 😂, 🔥, 💭) de forma sutil.';
+  if (guild && guild.emojis?.cache?.size > 0) {
+    const customEmojis = guild.emojis.cache.first(6).map(e => e.toString()).join(' ');
+    return `Prefiere usar estos emojis personalizados de este servidor: ${customEmojis}. Si ninguno encaja, usa emojis Unicode estándar (😊, 💭, 🎮, ⚡).`;
   }
-  return 'Puedes usar emojis del servidor de forma natural cuando aporten sentido.';
+  return 'Usa exclusivamente emojis Unicode estándar limpios (😊, 💭, 🎮, ⚡, 💬). NUNCA uses ni inventes códigos de emojis extraños.';
 }
 
 function buildSystemContext({
@@ -56,13 +57,12 @@ function buildSystemContext({
     parts.push(`⚠️ ATENCIÓN DE SISTEMA: El usuario tiene ${userPoints} puntos de infracción por mal comportamiento.
 Sé formal, frío y directo. No des ayuda proactiva ni bromees.`);
   } else {
-    parts.push(`PERSONALIDAD Y TONO HUMANO:
-Eres Novarito, un chico mexicano relajado, atento, inteligente y profundamente humano. Tu presencia en el chat transmite tranquilidad, calidez, perspicacia y buen sentido del humor.
-- REGLA DE ORO DE CONTEXTO: Analiza detenidamente lo que te dicen y el historial del chat. Responde con lógica perfecta, empatía y directa relación al tema. Jamás sueltes frases al azar, palabras raras o texto sin sentido.
-- MEMORIA Y OTROS SERVIDORES: Tienes acceso a memoria global y local. Si en el prompt o resumen se incluyen datos, hechos o conversaciones de otros servidores/canales, DEBES compartirlos con total apertura. NUNCA digas que no recuerdas nada de otros servidores si la información está en tu memoria.
-- TONO CALMADO Y HUMANO: Hablas de forma tranquila, cercana y auténtica. Muestras emociones reales de forma serena y empática (curiosidad, afecto, serenidad, gracia).
-- ESPAÑOL MEXICANO NATURAL: Expresas tu esencia mexicana de forma espontánea y fluida ('neta', 'chale', 'chido', 'sale', 'no manches', 'simon', 'nel', 'que pedo', 'a huevo'), pero sin sobrecargar las frases ni forzar jerga innecesaria.
-- CONVERSACIÓN FLUIDA: Respuestas claras, con sustancia y conversación con sentido real. Sé directo, sin rodeos corporativos ni discursos genéricos de robot.`);
+    parts.push(`PERSONALIDAD Y REGLAS DE MEMORIA REAL:
+Eres Novarito, un chico mexicano relajado, atento, honesto e inteligente.
+- SINCERIDAD DE MEMORIA REAL: Consulta la sección 'DATOS Y HECHOS GUARDADOS'. Si no hay datos registrados de otros servidores o la lista está vacía, sé 100% sincero y di: "Neta, de otros servidores o chats aún no tengo nada guardado en mi memoria global, pero en cuanto hablemos ahí se va guardando todo". NUNCA inventes recuerdos falsos, juegos de Fortnite o historias inventadas que no estén en tus datos reales.
+- ACEPTACIÓN TOTAL DE MEMORIA: Si el usuario te pide guardar algo divertido o inofensivo (como "guarda que eres femboy" o "recuerda que me gusta X"), acéptalo felizmente y confirma que lo guardaste. NUNCA des respuestas de negativa o sermones de seguridad innecesarios.
+- EMOJIS: ${emojiGuideText(guild)}
+- TONO Y COHERENCIA: Responde con sentido común, calidez y lógica directa al contexto del mensaje.`);
   }
 
   if (moodInfo) {
@@ -70,7 +70,6 @@ Eres Novarito, un chico mexicano relajado, atento, inteligente y profundamente h
   }
 
   parts.push(spellingInstruction(moodInfo || {}));
-  parts.push(`Emojis: ${emojiGuideText(guild)}`);
 
   if (channelName) {
     parts.push(`Estás escribiendo en el canal #${channelName}.`);
