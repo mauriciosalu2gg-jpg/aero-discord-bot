@@ -134,10 +134,18 @@ export async function getUserMemory(userId, guildId, mode, channelId) {
     }
   } catch { /* sin perfil aún */ }
 
-  // Mergear: perfil persistente + facts de conversación (sin duplicados)
+  // Mergear: perfil persistente + facts de conversación + JSON singulares de servidor
+  let serverFacts = [];
+  try {
+    const sMem = readServerMemory(guildId);
+    if (sMem) {
+      serverFacts = sMem.users?.[userId]?.facts || sMem.facts || [];
+    }
+  } catch { /* ignore */ }
+
   const conversationFacts = factsData.facts || [];
   const allFacts = [...profileFacts];
-  for (const f of conversationFacts) {
+  for (const f of [...conversationFacts, ...serverFacts]) {
     if (!allFacts.some(pf => pf.toLowerCase() === f.toLowerCase())) {
       allFacts.push(f);
     }

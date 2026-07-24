@@ -1189,6 +1189,29 @@ client.on('messageCreate', async (message) => {
       if (!memory.facts.some(f => f.includes(`[ID:${message.author.id}]`))) {
         memory.facts.push(`Identidad en este servidor: ${identityTag}`);
       }
+      
+      // ⚡ GUARDADO EN TIEMPO REAL INSTANTÁNEO A DISCO Y FIREBASE
+      try {
+        const { saveUserMemory } = await import('./core/memory/index.js');
+        const { saveServerMemory } = await import('./core/memory/serverMemoryManager.js');
+        await saveUserMemory(message.author.id, guildId, userConfig.mode, memory, channelId);
+        if (guildId) {
+          await saveServerMemory(guildId, {
+            serverId: guildId,
+            name: message.guild?.name || 'Servidor',
+            facts: memory.facts,
+            users: {
+              [message.author.id]: {
+                facts: memory.facts,
+                summary: memory.summary || ''
+              }
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('[memory-realtime] Error al persistir memoria en tiempo real:', err.message);
+      }
+
       await saveIdentityFactsMentionedInMemoryRequest(finalContent).catch(err => {
         console.warn('[identity] No se pudieron guardar hechos por ID:', err.message);
       });
