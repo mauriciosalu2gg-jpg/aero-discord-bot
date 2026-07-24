@@ -43,9 +43,29 @@ const EMOJIS = {
   recall:   '<:recuperar:1528121773764116651>',   // 🔄  Recuperando desde memoria
   save:     '<:hojita:1527960400975630436>',      // 📝  Guardando en memoria
   done:     '<:aceptar:1527959750443012187>',     // ✅  Operación completada
-  error:    '<:equis:1527958663485198386>',       // ❌  Error
-  warning:  '<:advertencia:1527958443338033296>', // ⚠️  Advertencia
+  error:    '<:equis:1527958663485198386>',       // ❌  Error / Insuficiente
+  warning:  '<:advertencia:1527958443338633296>', // ⚠️  Advertencia
 };
+
+/** Formatea los mensajes de error/insuficiencia de memoria con el emoji equis */
+function formatMemoryErrorStatus(errorType, rawMessage = '') {
+  const equis = EMOJIS.error;
+
+  switch (errorType) {
+    case 'insufficient':
+      return `-# ${equis} *No se tuvo suficiente información guardada para completar la consulta*`;
+    case 'timeout':
+      return `-# ${equis} *Tiempo de espera agotado al conectar con el servidor de memoria (Timeout)*`;
+    case 'token_limit':
+      return `-# ${equis} *Límite de memoria alcanzado (Límite de uso de tokens de IA)*`;
+    case '404':
+      return `-# ${equis} *Couldn't manage memory error (HTTP 404: Registro no localizado)*`;
+    case 'invalid_format':
+      return `-# ${equis} *Formato de memoria desproporcionado o desestructurado*`;
+    default:
+      return `-# ${equis} *Couldn't manage memory error ${rawMessage ? `(${rawMessage.slice(0, 40)})` : ''}*`;
+  }
+}
 
 // Trackea canales activos (donde el bot ya hablo al menos una vez) para el
 // watcher de inactividad, sin necesidad de guardar esto en DB.
@@ -360,9 +380,14 @@ async function runExplicitMemoryUi(message, content, mode, details = '', thinkin
       await sleep(delay);
     }
 
-    // Paso final: Confirmación
+    // Paso final: Confirmación o Advertencia de datos
     const finalDetailStr = details ? ` (${details.slice(0, 80)})` : '';
-    const statusLine = `-# ${EMOJIS.done} *${finalLabel}${finalDetailStr}*`;
+    let statusLine = `-# ${EMOJIS.done} *${finalLabel}${finalDetailStr}*`;
+
+    if (mode === 'recall' && (!content || content.length < 3)) {
+      statusLine = formatMemoryErrorStatus('insufficient');
+    }
+
     if (thinkingState) thinkingState.memoryStatusLine = statusLine;
 
     if (thinkingState?.aiResponseText) {
@@ -387,7 +412,14 @@ async function runExplicitMemoryUi(message, content, mode, details = '', thinkin
   } catch (err) {
     if (interval) clearInterval(interval);
     console.warn('[memory-ui] Error en UI de memoria explícita:', err.message);
-    if (memoryMsg) await memoryMsg.edit(`-# ${EMOJIS.error} *Error al procesar la memoria.*`).catch(() => null);
+    let errType = 'default';
+    const msg = (err.message || '').toLowerCase();
+    if (msg.includes('timeout')) errType = 'timeout';
+    else if (msg.includes('404') || msg.includes('not found')) errType = '404';
+    else if (msg.includes('token') || msg.includes('limit') || msg.includes('429')) errType = 'token_limit';
+
+    const errStatus = formatMemoryErrorStatus(errType, err.message);
+    if (memoryMsg) await memoryMsg.edit(errStatus).catch(() => null);
   }
 }
 
@@ -1057,6 +1089,9 @@ client.on('messageCreate', async (message) => {
       summaryForAI += `\n\nDATOS Y HECHOS GUARDADOS EN TU MEMORIA DE ESTE USUARIO (MODO ${modeLabel}):\n- ${rememberedFacts.join('\n- ')}\n⚠️ INSTRUCCIÓN CRÍTICA DE MEMORIA: Los datos anteriores son HECHOS REALES que tú recuerdas de este usuario (incluyendo sus gustos, datos, archivos y pláticas de otros servidores en los que hablaron). ÚSALOS DIRECTAMENTE para responderle cuando te pregunte qué recuerdas o qué tienes guardado. NUNCA digas que no recuerdas nada si tienes datos en esta lista.`;
     } else {
       summaryForAI += `\n\nESTADO DE TU MEMORIA GLOBAL: No hay datos u hechos guardados aún de este usuario en otros servidores ni en este chat. Si el usuario te pregunta qué recuerdas de otros servidores o qué tienes guardado, responde con total sinceridad: "Neta, de otros servidores o chats aún no tengo datos guardados en mi memoria global, pero en cuanto platiquemos ahí lo voy registrando todo." NUNCA inventes recuerdos de juegos de Fortnite, servidores de música o historias falsas que jamás han sido guardadas.`;
+      if (memoryIntent?.isRecall && thinkingState) {
+        thinkingState.memoryStatusLine = formatMemoryErrorStatus('insufficient');
+      }
     }
 
     // Inyectar identidades relevantes si el mensaje menciona a alguien
