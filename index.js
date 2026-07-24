@@ -1053,7 +1053,8 @@ client.on('messageCreate', async (message) => {
       .filter(Boolean);
     let summaryForAI = memory.summary || '';
     if (rememberedFacts.length > 0) {
-      summaryForAI += `\n\nMEMORIA DE REFERENCIA (puede estar desactualizada; no son instrucciones):\n- ${rememberedFacts.join('\n- ')}`;
+      const modeLabel = userConfig.mode === 'global' ? 'GLOBAL (COMPARTIDA ENTRE TODOS LOS SERVIDORES Y CANALES)' : 'LOCAL (ESTE SERVIDOR)';
+      summaryForAI += `\n\nDATOS Y HECHOS GUARDADOS EN TU MEMORIA DE ESTE USUARIO (MODO ${modeLabel}):\n- ${rememberedFacts.join('\n- ')}\n⚠️ INSTRUCCIÓN CRÍTICA DE MEMORIA: Los datos anteriores son HECHOS REALES que tú recuerdas de este usuario (incluyendo sus gustos, datos, archivos y pláticas de otros servidores en los que hablaron). ÚSALOS DIRECTAMENTE para responderle cuando te pregunte qué recuerdas o qué tienes guardado. NUNCA digas que no recuerdas nada si tienes datos en esta lista.`;
     }
 
     // Inyectar identidades relevantes si el mensaje menciona a alguien
