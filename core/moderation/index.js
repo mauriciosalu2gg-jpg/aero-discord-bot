@@ -79,7 +79,7 @@ const activeGuildsCache = new Map();
 
 export function isModerationActive(guildId) {
   const state = activeGuildsCache.get(guildId);
-  return !!(state && state.active && state.status === 'active');
+  return !!(state && state.active && state.status !== 'disabled');
 }
 
 export function getModerationState(guildId) {
