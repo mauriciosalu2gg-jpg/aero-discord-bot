@@ -182,9 +182,9 @@ async function updateThinkingStatus(state, { emoji, label } = {}) {
 
 function memoryUiTiming(content, mode) {
   return {
-    introMs: 600,
-    stepMs: 500,
-    intervalMs: 350,
+    introMs: 1000,
+    stepMs: 1400,
+    intervalMs: 700,
   };
 }
 
@@ -244,32 +244,17 @@ async function runExplicitMemoryUi(message, content, mode, details = '', thinkin
         clearInterval(interval);
 
         const statusLine = `-# ${EMOJIS.done} *${finalLabel}*`;
-        if (thinkingState) thinkingState.memoryFooter = statusLine;
+        if (thinkingState) thinkingState.memoryStatusLine = statusLine;
+
+        const thinkingTimeStr = formatThinkingTime(Date.now() - (thinkingState?.startTime || Date.now()));
+        const thinkingLine = `-# ${EMOJIS.thinking} *Pensó por ${thinkingTimeStr}*`;
+        const combinedFooter = `${thinkingLine}\n${statusLine}`;
 
         if (thinkingState?.aiResponseText) {
-          await memoryMsg.edit(`${thinkingState.aiResponseText}\n${statusLine}`).catch(() => null);
+          await memoryMsg.edit(`${thinkingState.aiResponseText}\n${combinedFooter}`).catch(() => null);
         } else {
-          await memoryMsg.edit(statusLine).catch(() => null);
+          await memoryMsg.edit(combinedFooter).catch(() => null);
         }
-
-        // Tras 75 segundos, edita el footer de regreso a "Pensó por X segundos/minutos" para disimular
-        setTimeout(async () => {
-          try {
-            if (thinkingState?.startTime) {
-              const elapsedMs = Date.now() - thinkingState.startTime;
-              const formattedTime = formatThinkingTime(elapsedMs);
-              const hideFooter = `💭 *Pensó por ${formattedTime}*`;
-
-              if (thinkingState.aiResponseText) {
-                await memoryMsg.edit(`${thinkingState.aiResponseText}\n${hideFooter}`).catch(() => null);
-              } else if (createdNew) {
-                await memoryMsg.delete().catch(() => null);
-              } else {
-                await memoryMsg.edit(hideFooter).catch(() => null);
-              }
-            }
-          } catch { /* ignore */ }
-        }, 75000);
       }
     } catch (err) {
       console.warn('[memory-ui] Error en modo compacto:', err.message);
@@ -345,30 +330,17 @@ async function runExplicitMemoryUi(message, content, mode, details = '', thinkin
     // Paso final: Confirmación
     const finalDetailStr = details ? ` (${details.slice(0, 80)})` : '';
     const statusLine = `-# ${EMOJIS.done} *${finalLabel}${finalDetailStr}*`;
-    if (thinkingState) thinkingState.memoryFooter = statusLine;
+    if (thinkingState) thinkingState.memoryStatusLine = statusLine;
+
+    const thinkingTimeStr = formatThinkingTime(Date.now() - (thinkingState?.startTime || Date.now()));
+    const thinkingLine = `-# ${EMOJIS.thinking} *Pensó por ${thinkingTimeStr}*`;
+    const combinedFooter = `${thinkingLine}\n${statusLine}`;
 
     if (thinkingState?.aiResponseText) {
-      await memoryMsg.edit(`${thinkingState.aiResponseText}\n${statusLine}`).catch(() => null);
+      await memoryMsg.edit(`${thinkingState.aiResponseText}\n${combinedFooter}`).catch(() => null);
     } else {
-      await memoryMsg.edit(statusLine).catch(() => null);
+      await memoryMsg.edit(combinedFooter).catch(() => null);
     }
-
-    // Auto-compactar / disimular tras 75 segundos (1.25 minutos)
-    setTimeout(async () => {
-      try {
-        if (thinkingState?.startTime) {
-          const elapsedMs = Date.now() - thinkingState.startTime;
-          const formattedTime = formatThinkingTime(elapsedMs);
-          const hideFooter = `💭 *Pensó por ${formattedTime}*`;
-
-          if (thinkingState.aiResponseText) {
-            await memoryMsg.edit(`${thinkingState.aiResponseText}\n${hideFooter}`).catch(() => null);
-          } else {
-            await memoryMsg.edit(hideFooter).catch(() => null);
-          }
-        }
-      } catch { /* ignore */ }
-    }, 75000);
 
   } catch (err) {
     if (interval) clearInterval(interval);
@@ -473,14 +445,13 @@ http.createServer((req, res) => {
 client.once('ready', async () => {
   console.log(`[discord] Conectado como ${client.user.tag}`);
   
-  // Limpiar comandos de servidor (guild commands) para eliminar comandos antiguos/duplicados.
-  // Solo dependemos de los comandos globales (/bot).
+  // Desplegar comandos directamente en cada servidor para actualización INSTANTÁNEA en PC y móvil
   client.guilds.cache.forEach(async (g) => {
     config.registerGuild(g);
     try {
-      await g.commands.set([]);
+      await g.commands.set(commandDefinitions);
     } catch (err) {
-      console.warn(`[discord] No se pudieron limpiar comandos locales en ${g.name}:`, err.message);
+      console.warn(`[discord] No se pudieron desplegar comandos locales en ${g.name}:`, err.message);
     }
   });
   startConfigRefresh(5);
@@ -1246,7 +1217,11 @@ client.on('messageCreate', async (message) => {
         if (!firstMessageEdited && thinkingMsg) {
           const fullContent = `${pingPrefix}${chunk}`;
           if (thinkingState) thinkingState.aiResponseText = fullContent;
-          const footerStr = thinkingState?.memoryFooter || `-# ${EMOJIS.thinking} *Pensó por ${thinkingTime}*`;
+          const thinkingLine = `-# ${EMOJIS.thinking} *Pensó por ${thinkingTime}*`;
+          let footerStr = thinkingLine;
+          if (thinkingState?.memoryStatusLine) {
+            footerStr = `${thinkingLine}\n${thinkingState.memoryStatusLine}`;
+          }
           await thinkingMsg.edit(`${fullContent}\n${footerStr}`).catch(() => null);
           firstMessageEdited = true;
         } else {

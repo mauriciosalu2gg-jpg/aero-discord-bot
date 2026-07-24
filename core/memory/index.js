@@ -315,7 +315,8 @@ async function saveProfileFacts(userId, facts) {
   if (!facts || facts.length === 0) return;
   try {
     const pPath = profilePath(userId);
-    const existing = await getCached(pPath, { facts: [] });
+    const cachedDoc = await getCached(pPath, null);
+    const existing = cachedDoc || { facts: [] };
     const merged = [...(existing.facts || [])];
 
     for (const fact of facts) {
@@ -669,10 +670,11 @@ function identityPath(userId) {
   return `user_identities/${userId}`;
 }
 
-export async function saveUserIdentity(userId, data) {
-  if (!userId) return;
+export async function saveUserIdentity(userId, data = {}) {
+  if (!userId) return null;
   try {
-    const existing = await getCached(identityPath(userId), { names: [], nicknames: [], facts: [] });
+    const cachedDoc = await getCached(identityPath(userId), null);
+    const existing = cachedDoc || { names: [], nicknames: [], facts: [] };
     // Los nombres actuales REEMPLAZAN a los anteriores (para reflejar cambios de username)
     // Los nicknames se acumulan (son apodos que la gente le da)
     const mergedNicks = [...new Set([...(existing.nicknames || []), ...(data.nicknames || [])])];
