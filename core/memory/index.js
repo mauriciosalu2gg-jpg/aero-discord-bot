@@ -417,7 +417,7 @@ export async function getAllUserServerMemories(userId) {
       return results.filter(Boolean);
     })();
 
-    const timeoutPromise = new Promise(resolve => setTimeout(() => resolve([]), 1500));
+    const timeoutPromise = new Promise(resolve => setTimeout(() => resolve([]), 6000));
     return await Promise.race([fetchPromise, timeoutPromise]);
   } catch (err) {
     console.error('[memory] Error en getAllUserServerMemories:', err.message);
