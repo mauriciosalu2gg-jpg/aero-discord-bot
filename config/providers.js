@@ -1,6 +1,8 @@
 // config/providers.js
 // Configuración centralizada de todos los proveedores de IA.
 
+export const STATS_WINDOW_SIZE = 10;
+
 export const PROVIDER_PRIORITY = [
   'groq',
   'gemini',
@@ -76,11 +78,24 @@ export function getCooldownMs(kind) {
   return DEFAULT_COOLDOWNS_MS[kind] || DEFAULT_COOLDOWNS_MS.default;
 }
 
+export function getMaxTokens(intent = 'chat') {
+  if (intent === 'moderation') return 300;
+  if (intent === 'summary') return 600;
+  return 1000;
+}
+
+export function getRepetitionControls(intent = 'chat') {
+  return { presence_penalty: 0.1, frequency_penalty: 0.1 };
+}
+
 export default {
+  STATS_WINDOW_SIZE,
   PROVIDER_PRIORITY,
   MODEL_LADDERS,
   DEFAULT_COOLDOWNS_MS,
   MODEL_DISCOVERY_URLS,
   getModelLadder,
   getCooldownMs,
+  getMaxTokens,
+  getRepetitionControls,
 };
