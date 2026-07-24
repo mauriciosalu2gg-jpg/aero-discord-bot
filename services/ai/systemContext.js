@@ -87,5 +87,7 @@ Eres Novarito, un chico mexicano relajado, atento, inteligente y profundamente h
   return parts.filter(Boolean).join('\n\n');
 }
 
-export { buildSystemContext, buildSystemContext as buildSystemExtra };
+const buildSystemExtra = buildSystemContext;
+
+export { buildSystemContext, buildSystemExtra };
 export default { buildSystemContext, buildSystemExtra };

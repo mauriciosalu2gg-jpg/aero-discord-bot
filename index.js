@@ -99,25 +99,48 @@ async function generateMemoryStepsAI(content, mode, bulletStyle = 'arrows') {
     'Identificando datos importantes',
     'Preparando contexto relevante',
   ];
-  if (!isMemoryEngineAvailable()) return mode === 'save' ? fallbackSave : fallbackRecall;
+  const fallbackClaudeSave = [
+    { type: 'step', text: 'Analizando el contexto e información importante' },
+    { type: 'think', text: 'Me doy cuenta de que debo conservar este dato de forma permanente para recordar lo que me pide el usuario.' },
+    { type: 'step', text: 'Extrayendo detalles clave y referencias' },
+    { type: 'think', text: 'Organizo las preferencias e identidades mencionadas para asociarlas correctamente.' },
+    { type: 'step', text: 'Actualizando registros en la memoria a largo plazo' },
+    { type: 'think', text: 'Guardo la referencia de forma segura para tenerla disponible en nuestras próximas pláticas.' },
+  ];
+  const fallbackClaudeRecall = [
+    { type: 'step', text: 'Revisando conversaciones e historial previo' },
+    { type: 'think', text: 'Busco en mis archivos locales y globales los datos o preferencias guardadas anteriormente.' },
+    { type: 'step', text: 'Filtrando referencias e información relevante' },
+    { type: 'think', text: 'Identifico los puntos clave que coinciden exactamente con lo que me está preguntando.' },
+    { type: 'step', text: 'Sintetizando la información para la respuesta' },
+    { type: 'think', text: 'Preparo una respuesta clara y concisa basada en lo que tengo registrado.' },
+  ];
+
+  if (!isMemoryEngineAvailable()) {
+    if (bulletStyle === 'claude') return mode === 'save' ? fallbackClaudeSave : fallbackClaudeRecall;
+    return mode === 'save' ? fallbackSave : fallbackRecall;
+  }
 
   let prompt;
   if (bulletStyle === 'claude') {
     prompt = mode === 'save'
-      ? `El usuario dijo: "${content.slice(0, 200)}". Genera MÁXIMO 3 a 4 pares RÁPIDOS de razonamiento interno (PASO/RAZON) guardando info en memoria. Usa EXACTAMENTE este formato alternando líneas:\nPASO: [acción en gerundio, máx 6 palabras]\nRAZON: [pensamiento interno corto, 1 oración corta]. Empieza directamente con PASO:.`
-      : `El usuario dijo: "${content.slice(0, 200)}". Genera MÁXIMO 3 a 4 pares RÁPIDOS de razonamiento interno (PASO/RAZON) recuperando info de memoria. Usa EXACTAMENTE este formato:\nPASO: [acción en gerundio, máx 6 palabras]\nRAZON: [pensamiento interno corto, 1 oración corta]. Empieza con PASO:.`;
+      ? `El usuario dijo: "${content.slice(0, 300)}". Genera 4 a 5 pares DETALLADOS de razonamiento interno de un asistente AI guardando esta info en memoria. Usa EXACTAMENTE este formato alternando líneas:\nPASO: [acción en gerundio, máx 8 palabras]\nRAZON: [pensamiento interno reflexivo en primera persona: qué hace, encuentra o decide, 1-2 oraciones cortas]. Empieza directamente con PASO:.`
+      : `El usuario dijo: "${content.slice(0, 300)}". Genera 4 a 5 pares DETALLADOS de razonamiento interno de un asistente AI recuperando info de memoria. Usa EXACTAMENTE este formato alternando líneas:\nPASO: [acción en gerundio, máx 8 palabras]\nRAZON: [pensamiento interno reflexivo en primera persona: qué busca o concluye, 1-2 oraciones cortas]. Empieza con PASO:.`;
   } else {
     prompt = mode === 'save'
-      ? `El usuario dijo: "${content.slice(0, 200)}". Genera MÁXIMO 4 pasos ULTRACORTOS (máximo 4 palabras por paso en gerundio) de lo que harías para guardar esta info. Uno por línea, sin viñetas.`
-      : `El usuario dijo: "${content.slice(0, 200)}". Genera MÁXIMO 4 pasos ULTRACORTOS (máximo 4 palabras por paso en gerundio) de lo que harías para consultar la memoria. Uno por línea, sin viñetas.`;
+      ? `El usuario dijo: "${content.slice(0, 200)}". Genera 4 a 5 pasos paso a paso (máximo 5 palabras por paso en gerundio) de lo que harías para guardar esta info. Uno por línea, sin viñetas.`
+      : `El usuario dijo: "${content.slice(0, 200)}". Genera 4 a 5 pasos paso a paso (máximo 5 palabras por paso en gerundio) de lo que harías para consultar la memoria. Uno por línea, sin viñetas.`;
   }
 
   try {
     const resPromise = askMemoryEngine('topic', [{ role: 'user', content: prompt }], 0.4).catch(() => null);
-    const timeoutPromise = sleep(2200).then(() => null);
+    const timeoutPromise = sleep(3500).then(() => null);
     const res = await Promise.race([resPromise, timeoutPromise]);
 
-    if (!res) return mode === 'save' ? fallbackSave : fallbackRecall;
+    if (!res) {
+      if (bulletStyle === 'claude') return mode === 'save' ? fallbackClaudeSave : fallbackClaudeRecall;
+      return mode === 'save' ? fallbackSave : fallbackRecall;
+    }
 
     if (bulletStyle === 'claude') {
       const lines = res.split('\n').map(s => s.trim()).filter(s => s.length > 2);
@@ -129,12 +152,13 @@ async function generateMemoryStepsAI(content, mode, bulletStyle = 'arrows') {
           parsed.push({ type: 'think', text: line.replace(/^RAZ[OÓ]N:\s*/i, '').slice(0, 250) });
         }
       }
-      return parsed.length >= 2 ? parsed.slice(0, 6) : fallbackSave.map(s => ({ type: 'step', text: s }));
+      return parsed.length >= 2 ? parsed.slice(0, 10) : (mode === 'save' ? fallbackClaudeSave : fallbackClaudeRecall);
     }
 
-    const steps = res.split('\n').map(s => s.trim().replace(/^[-*•\d\.\s]+/, '').slice(0, 150)).filter(s => s.length > 3).slice(0, 4);
+    const steps = res.split('\n').map(s => s.trim().replace(/^[-*•\d\.\s]+/, '').slice(0, 150)).filter(s => s.length > 3).slice(0, 6);
     return steps.length >= 2 ? steps : (mode === 'save' ? fallbackSave : fallbackRecall);
   } catch {
+    if (bulletStyle === 'claude') return mode === 'save' ? fallbackClaudeSave : fallbackClaudeRecall;
     return mode === 'save' ? fallbackSave : fallbackRecall;
   }
 }
@@ -182,9 +206,9 @@ async function updateThinkingStatus(state, { emoji, label } = {}) {
 
 function memoryUiTiming(content, mode) {
   return {
-    introMs: 1000,
-    stepMs: 1400,
-    intervalMs: 700,
+    introMs: 2200,
+    stepMs: 2500,
+    intervalMs: 1200,
   };
 }
 
@@ -305,7 +329,7 @@ async function runExplicitMemoryUi(message, content, mode, details = '', thinkin
     for (const step of steps) {
       let stepStr = '';
       if (typeof step === 'object') {
-        stepStr = step.type === 'think' ? `-# ${step.text}` : `-# ${bullet} ${step.text}`;
+        stepStr = step.type === 'think' ? `-# *" ${step.text} "*` : `-# ❥ **${step.text}**`;
       } else {
         stepStr = `-# ${bullet} ${step}`;
       }
