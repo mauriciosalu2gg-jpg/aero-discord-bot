@@ -115,7 +115,11 @@ async function generateMemoryStepsAI(content, mode, bulletStyle = 'arrows') {
   }
 
   try {
-    const res = await askMemoryEngine('topic', [{ role: 'user', content: prompt }], 0.4);
+    const resPromise = askMemoryEngine('topic', [{ role: 'user', content: prompt }], 0.4).catch(() => null);
+    const timeoutPromise = sleep(3200).then(() => null);
+    const res = await Promise.race([resPromise, timeoutPromise]);
+
+    if (!res) return mode === 'save' ? fallbackSave : fallbackRecall;
 
     if (bulletStyle === 'claude') {
       const lines = res.split('\n').map(s => s.trim()).filter(s => s.length > 2);
@@ -275,11 +279,14 @@ async function runExplicitMemoryUi(message, content, mode, details = '', thinkin
   try {
     let createdNew = false;
     if (!memoryMsg) {
-      memoryMsg = await message.channel.send(`-# ${EMOJIS.memory} *Managing memory*`).catch(() => null);
+      memoryMsg = await message.channel.send(`-# ${EMOJIS.memory} *Managing memory...*`).catch(() => null);
       createdNew = true;
     }
 
     if (!memoryMsg) return;
+
+    // Cambiar inmediatamente la burbuja de "Pensando..." a "Managing memory..." en el primer cuadro
+    await memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory...*`).catch(() => null);
 
     let dot = 0;
     interval = setInterval(() => {
@@ -1077,7 +1084,7 @@ client.on('messageCreate', async (message) => {
       }
 
       // Si un admin/owner pide ver los pasos explícitamente (modo Claude ❥)
-      if (isUserAdminOrHigher && /muéstrame|muestrame|enseñame|enséñame|los pasos|con pasos|paso a paso|detallado|explicame|explícame|explicito(s)?/i.test(finalContent)) {
+      if (isUserAdminOrHigher && /muéstrame|muestrame|enseñame|enséñame|dime|dinos|los pasos|pasos|con pasos|paso a paso|detallado|explicame|explícame|explicito|explícito/i.test(finalContent)) {
         askedForSteps = true;
         effectiveVerboseSteps = true;
       }
@@ -1102,7 +1109,7 @@ client.on('messageCreate', async (message) => {
       }
 
       // Si un admin/owner pide ver los pasos explícitamente (modo Claude ❥)
-      if (isUserAdminOrHigher && /muéstrame|muestrame|enseñame|enséñame|los pasos|con pasos|paso a paso|detallado|explicame|explícame|explicito(s)?/i.test(finalContent)) {
+      if (isUserAdminOrHigher && /muéstrame|muestrame|enseñame|enséñame|dime|dinos|los pasos|pasos|con pasos|paso a paso|detallado|explicame|explícame|explicito|explícito/i.test(finalContent)) {
         askedForSteps = true;
         effectiveVerboseSteps = true;
       }
