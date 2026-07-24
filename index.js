@@ -504,9 +504,8 @@ client.once('ready', async () => {
     const _rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     const clientId = process.env.DISCORD_CLIENT_ID;
     if (clientId) {
-      await _rest.put(Routes.applicationCommands(clientId), { body: [] }).catch(() => {});
       await _rest.put(Routes.applicationCommands(clientId), { body: commandDefinitions });
-      console.log(`[discord] Comandos globales sincronizados limpiamente (${commandDefinitions.length} comandos raíz).`);
+      console.log(`[discord] Comandos globales sincronizados (${commandDefinitions.length} comandos).`);
     }
   } catch (err) {
     console.warn('[discord] No se pudieron sincronizar comandos globales:', err.message);
