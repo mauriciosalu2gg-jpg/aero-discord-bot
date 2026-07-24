@@ -1216,8 +1216,14 @@ client.on('messageCreate', async (message) => {
       pingPrefix = `<@${message.author.id}> `;
     }
 
-    // 8. Fragmentar la respuesta como escribe una persona real
-    const parts = splitHumanized(response.text, moodInfo);
+    // 8. Sanitizar respuesta vacía o con solo '...'
+    let cleanText = (response.text || '').trim();
+    if (!cleanText || cleanText === '...' || cleanText === '..' || cleanText === '.') {
+      cleanText = 'jaja qué pedo, qué me decías?';
+    }
+
+    // 9. Fragmentar la respuesta como escribe una persona real
+    const parts = splitHumanized(cleanText, moodInfo);
     let firstMessageEdited = false;
     
     for (let i = 0; i < parts.length; i++) {
