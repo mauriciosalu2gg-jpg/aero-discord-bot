@@ -528,7 +528,7 @@ http.createServer((req, res) => {
   res.end('OK');
 }).listen(PORT, () => console.log(`[http] Keepalive en puerto ${PORT}`));
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
   console.log(`[discord] Conectado como ${client.user.tag}`);
   
   // Limpiar comandos a nivel de servidor (guild commands) e inicializar memoria singular
