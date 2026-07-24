@@ -6,7 +6,7 @@ import { clearPoints, getUserPoints } from '../../core/moderation/index.js';
 import { isAdminOrHigher } from '../../core/permissions.js';
 import { askAI } from '../../services/aiManager.js';
 import { getUserMemoryConfig, setUserMemoryConfig } from '../../core/memory/config.js';
-import { resetUserMemory } from '../../core/memory/index.js';
+import { resetUserMemory, purgeUserMemory } from '../../core/memory/index.js';
 
 function isAltoMando(interaction) {
   // Dueño del servidor o rol de admin del bot
@@ -86,10 +86,23 @@ export async function handleAiCommand(interaction) {
     if (subcommand === 'limpiar_memoria') {
       const userId = interaction.user.id;
       const guildId = interaction.guildId;
+      const targetServer = interaction.options.getString('servidor');
       try {
         const config = await getUserMemoryConfig(userId);
-        await resetUserMemory(userId, guildId, config.mode, interaction.channelId);
-        await interaction.editReply({ content: '🧹 Memoria limpiada exitosamente. El historial de conversación fue borrado.', ephemeral: false });
+        const res = await purgeUserMemory(userId, guildId, config.mode, interaction.channelId, targetServer);
+        
+        let label = 'de este servidor';
+        if (targetServer) {
+          const s = targetServer.toLowerCase();
+          if (s === 'todos') label = 'de TODOS los servidores e historial global';
+          else if (s === 'global') label = 'de la memoria global';
+          else label = `del servidor **${targetServer}**`;
+        }
+
+        await interaction.editReply({ 
+          content: `🧹 **Memoria limpiada exitosamente** ${label}.\nNovarito ha borrado permanentemente todos los datos, hechos e historial registrados en esa ubicación.`, 
+          ephemeral: false 
+        });
       } catch (e) {
         await interaction.editReply({ content: `❌ Error al limpiar memoria: ${e.message}` });
       }

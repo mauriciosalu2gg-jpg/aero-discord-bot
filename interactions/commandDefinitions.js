@@ -37,7 +37,12 @@ export const commandDefinitions = [
     )
     .addSubcommand(sub => sub
       .setName('limpiar_memoria')
-      .setDescription('Borra todo el historial de mensajes de la IA')
+      .setDescription('Borra todo el historial de mensajes y datos de la memoria de la IA')
+      .addStringOption(opt => opt
+        .setName('servidor')
+        .setDescription('ID del servidor a limpiar (o "este", "global", "todos")')
+        .setRequired(false)
+      )
     )
     .addSubcommand(sub => sub
       .setName('modo_memoria')

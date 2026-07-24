@@ -171,11 +171,31 @@ export async function getUserMemory(userId, guildId, mode, channelId) {
     }
   }
 
+  let crossServerSummary = '';
+  if (mode === 'global') {
+    try {
+      const serverMemories = await getAllUserServerMemories(userId);
+      if (serverMemories.length > 0) {
+        const otherServersText = serverMemories.map(s => {
+          const sLabel = s.serverId === 'global' ? 'Global' : (s.serverId === guildId ? `Este servidor (${s.serverId})` : `Servidor ID ${s.serverId}`);
+          const factsStr = (s.facts || []).join('; ');
+          return `- [${sLabel}]: Resumen de charlas: "${s.summary || 'Conversación general'}" | Hechos conocidos: ${factsStr || 'Ninguno'}`;
+        }).join('\n');
+
+        if (otherServersText) {
+          crossServerSummary = `## RESUMEN HISTÓRICO DE OTROS SERVIDORES (MODO GLOBAL ACTIVO):\n${otherServersText}`;
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  const finalSummary = [factsData.summary || '', crossServerSummary].filter(Boolean).join('\n\n');
+
   return {
     messages,
     facts: allFacts,
     media,
-    summary: factsData.summary || '',
+    summary: finalSummary,
     isGlobal: mode === 'global',
     ...(mode === 'global' ? { topics } : {})
   };
@@ -365,23 +385,111 @@ export async function getRelevantTopics(userId, query, topN = 5) {
   }
 }
 
-export async function resetUserMemory(userId, guildId, mode, channelId) {
-  // Solo limpia la memoria de conversación del servidor (o scope actual)
-  const msgPath = legacyConversationPath(userId, guildId, mode, channelId);
-  const fPath = legacyFactsPath(userId, guildId, mode);
-  const updatedAt = new Date().toISOString();
-  setCached(msgPath, { messages: [], updatedAt });
-  setCached(fPath, { facts: [], summary: '', updatedAt });
-  await Promise.all([
-    flushCached(msgPath),
-    flushCached(fPath),
-    // Limpiar también el estado de topics del scope actual
-    deleteCached(topicStatePath(userId, guildId)),
-  ]);
+export async function getAllUserServerMemories(userId) {
+  if (!db || !userId) return [];
+  const serverMemories = [];
+  try {
+    const scopesSnap = await db.collection('memoryScopes').get().catch(() => null);
+    if (scopesSnap && !scopesSnap.empty) {
+      for (const scopeDoc of scopesSnap.docs) {
+        const scopeId = scopeDoc.id;
+        const factsDoc = await scopeDoc.ref.collection('facts').doc(userId).get().catch(() => null);
+        if (factsDoc && factsDoc.exists) {
+          const data = factsDoc.data();
+          if (data.summary || (data.facts && data.facts.length > 0)) {
+            serverMemories.push({
+              serverId: scopeId,
+              summary: data.summary || '',
+              facts: data.facts || [],
+              updatedAt: data.updatedAt || ''
+            });
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[memory] Error en getAllUserServerMemories:', err.message);
+  }
+  return serverMemories;
+}
 
-  // NOTA: user_profiles, user_topics y user_identities son globales
-  // y NO se tocan al limpiar la memoria de un servidor.
-  return { messages: [], summary: '', facts: [] };
+export async function resetUserMemory(userId, guildId, mode, channelId) {
+  return await purgeUserMemory(userId, guildId, mode, channelId);
+}
+
+export async function purgeUserMemory(userId, guildId, mode, channelId, targetServerArg = null) {
+  let targetScope = memoryScope(guildId, mode);
+  
+  if (targetServerArg) {
+    const cleanArg = targetServerArg.trim().toLowerCase();
+    if (cleanArg === 'global') {
+      targetScope = 'global';
+    } else if (cleanArg === 'este') {
+      targetScope = guildId || 'direct';
+    } else if (cleanArg !== 'todos') {
+      targetScope = targetServerArg.trim();
+    }
+  }
+
+  const isWipeAll = targetServerArg && targetServerArg.trim().toLowerCase() === 'todos';
+  const scopesToClear = isWipeAll 
+    ? ['global', guildId || 'direct'] 
+    : [targetScope];
+
+  for (const scope of scopesToClear) {
+    if (!scope) continue;
+    const msgPath = legacyConversationPath(userId, scope, 'local', channelId);
+    const fPath = legacyFactsPath(userId, scope, 'local');
+    const globalMsgPath = legacyConversationPath(userId, scope, 'global', channelId);
+    const globalFPath = legacyFactsPath(userId, scope, 'global');
+    const updatedAt = new Date().toISOString();
+
+    setCached(msgPath, { messages: [], updatedAt });
+    setCached(fPath, { facts: [], summary: '', updatedAt });
+    setCached(globalMsgPath, { messages: [], updatedAt });
+    setCached(globalFPath, { facts: [], summary: '', updatedAt });
+
+    deleteCached(topicStatePath(userId, scope));
+    deleteCached(archivePath(userId, scope));
+
+    await Promise.all([
+      flushCached(msgPath),
+      flushCached(fPath),
+      flushCached(globalMsgPath),
+      flushCached(globalFPath),
+    ]);
+
+    if (db) {
+      try {
+        await db.collection('memoryScopes').doc(scope).collection('conversations').doc(channelId || 'direct').collection('users').doc(userId).delete().catch(() => {});
+        await db.collection('memoryScopes').doc(scope).collection('facts').doc(userId).delete().catch(() => {});
+        await db.collection('user_topic_state').doc(`${userId}_${scope}`).delete().catch(() => {});
+        await db.collection('memory_archive').doc(`${userId}_${scope}`).delete().catch(() => {});
+      } catch (err) {
+        console.warn(`[memory/purge] Error borrando doc Firestore en scope ${scope}:`, err.message);
+      }
+    }
+  }
+
+  if (isWipeAll || targetScope === 'global') {
+    const pPath = profilePath(userId);
+    const tPath = topicsPath(userId);
+    const mPath = mediaPath(userId);
+
+    deleteCached(pPath);
+    deleteCached(tPath);
+    deleteCached(mPath);
+
+    if (db) {
+      try {
+        await db.collection('user_profiles').doc(userId).delete().catch(() => {});
+        await db.collection('user_topics').doc(userId).delete().catch(() => {});
+        await db.collection('user_media').doc(userId).delete().catch(() => {});
+      } catch {}
+    }
+  }
+
+  return { purged: true, targetScope };
 }
 
 // ── Estadisticas y Tokens ───────────────────────────────────────────────

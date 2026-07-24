@@ -944,6 +944,8 @@ client.on('messageCreate', async (message) => {
       authorName: message.author.username,
       displayName: message.member?.displayName || message.author.globalName || message.author.username,
       createdAt: message.createdAt?.toISOString(),
+      serverName: message.guild?.name || 'Direct Message',
+      serverId: guildId || 'direct',
     });
 
     if (memoryIntent.isSave && userConfig.mode !== 'off') {
