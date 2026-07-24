@@ -202,34 +202,70 @@ function computeExtraThinkingDelay({ baseMs, hasWebContext, intent, memoryIntent
 }
 
 async function runExplicitMemoryUi(message, content, mode, details = '', thinkingState = null, verboseSteps = true, forceClaude = false) {
-  let memoryMsg = null;
+  let memoryMsg = thinkingState?.msg || null;
   let interval = null;
-  const phaseLabel = mode === 'save' ? 'Guardando memoria' : 'Recuperando memoria';
+  const phaseLabel = mode === 'save' ? 'Guardando en la memoria' : 'Recuperando de la memoria';
   const phaseEmoji = mode === 'save' ? EMOJIS.save : EMOJIS.recall;
   const finalLabel = mode === 'save' ? 'Memoria actualizada' : 'Memoria recuperada';
   const timing = memoryUiTiming(content, mode);
 
-  // Si el admin desactivó los pasos verbosos, usamos el modo compacto (solo header + done)
+  // ── MODO COMPACTO (cuando no es verboseSteps) ──
   if (!verboseSteps) {
     try {
-      memoryMsg = await message.channel.send(`-# ${EMOJIS.memory} *Managing memory...*`);
-      await sleep(2200);
-      await memoryMsg.edit(`-# ${EMOJIS.done} *${finalLabel}*`).catch(() => null);
-      setTimeout(async () => {
-        await memoryMsg.delete().catch(() => null);
-      }, 8000);
-    } catch { /* silencioso */ }
+      let createdNew = false;
+      if (!memoryMsg) {
+        memoryMsg = await message.channel.send(`-# ${EMOJIS.memory} *Managing memory...*`).catch(() => null);
+        createdNew = true;
+      }
+
+      if (memoryMsg) {
+        let dot = 0;
+        const interval = setInterval(() => {
+          dot = (dot % 3) + 1;
+          memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory${'.'.repeat(dot)}*`).catch(() => null);
+        }, 600);
+
+        await sleep(2200);
+        clearInterval(interval);
+
+        const detailStr = details ? ` (${details.slice(0, 80)})` : '';
+        await memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory.*\n-# ${phaseEmoji} *${phaseLabel}...*${detailStr}`).catch(() => null);
+        await sleep(2400);
+
+        await memoryMsg.edit(`-# ${EMOJIS.done} *${finalLabel}*`).catch(() => null);
+
+        // Tras 75 segundos, edita de regreso a "Pensó por X segundos/minutos" para disimular
+        setTimeout(async () => {
+          try {
+            if (thinkingState?.startTime) {
+              const elapsedMs = Date.now() - thinkingState.startTime;
+              await memoryMsg.edit(`💭 *Pensó por ${formatThinkingTime(elapsedMs)}*`).catch(() => null);
+            } else if (createdNew) {
+              await memoryMsg.delete().catch(() => null);
+            }
+          } catch { /* ignore */ }
+        }, 75000);
+      }
+    } catch (err) {
+      console.warn('[memory-ui] Error en modo compacto:', err.message);
+    }
     return;
   }
 
-  // Elegir estilo de viñeta: 50% flechas (↳), 50% estrellitas (✧).
-  // El modo Claude (❥) SOLO se activa si el usuario es admin/owner y lo pidió explícitamente.
+  // ── MODO DETALLADO (Pasos ↳, ✧ o ❥) ──
   const roll = Math.random();
   const bulletStyle = forceClaude ? 'claude' : (roll < 0.50 ? 'arrows' : 'stars');
   const bullet = bulletStyle === 'arrows' ? '↳' : bulletStyle === 'stars' ? '✧' : '❥';
 
   try {
-    memoryMsg = await message.channel.send(`-# ${EMOJIS.memory} *Managing memory*`);
+    let createdNew = false;
+    if (!memoryMsg) {
+      memoryMsg = await message.channel.send(`-# ${EMOJIS.memory} *Managing memory*`).catch(() => null);
+      createdNew = true;
+    }
+
+    if (!memoryMsg) return;
+
     let dot = 0;
     interval = setInterval(() => {
       dot = (dot % 3) + 1;
@@ -248,34 +284,51 @@ async function runExplicitMemoryUi(message, content, mode, details = '', thinkin
     const steps = await generateMemoryStepsAI(content, mode, bulletStyle);
     clearInterval(phaseInterval);
 
-    let stepsText = '';
+    const recordedSteps = [];
     if (details) {
-      stepsText += `\n-# ${EMOJIS.save} Contenido: ${details}`;
+      recordedSteps.push(`-# ${EMOJIS.save} Contenido: ${details.slice(0, 150)}`);
     }
 
     for (const step of steps) {
-      // Claude-style: {type:'step'} = ❥ label, {type:'think'} = razonamiento sin prefijo
+      let stepStr = '';
       if (typeof step === 'object') {
-        if (step.type === 'think') {
-          stepsText += `\n-# ${step.text}`;
-        } else {
-          stepsText += `\n-# ${bullet} ${step.text}`;
-        }
+        stepStr = step.type === 'think' ? `-# ${step.text}` : `-# ${bullet} ${step.text}`;
       } else {
-        stepsText += `\n-# ${bullet} ${step}`;
+        stepStr = `-# ${bullet} ${step}`;
       }
-      await memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory.*\n-# ${phaseEmoji} *${phaseLabel}.*${stepsText}`).catch(() => null);
-      // Claude-style se tarda más entre pasos para que se sienta como razonamiento real
-      const delay = bulletStyle === 'claude' ? timing.stepMs + 800 : timing.stepMs;
+      recordedSteps.push(stepStr);
+
+      // Si excede 6 pasos o 1000 caracteres, compactar pasos antiguos para NO sobrepasar 2000 chars de Discord
+      let renderedStepsText = '';
+      if (recordedSteps.length > 6) {
+        const oldStepCount = recordedSteps.length - 4;
+        const recentSteps = recordedSteps.slice(-4);
+        renderedStepsText = `\n-# ${bullet} *[${oldStepCount} pasos anteriores compactados en memoria]*\n${recentSteps.join('\n')}`;
+      } else {
+        renderedStepsText = `\n${recordedSteps.join('\n')}`;
+      }
+
+      await memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory.*\n-# ${phaseEmoji} *${phaseLabel}.*${renderedStepsText}`).catch(() => null);
+      
+      const delay = bulletStyle === 'claude' ? timing.stepMs + 600 : timing.stepMs;
       await sleep(delay);
     }
 
-    await memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory.*\n-# ${phaseEmoji} *${phaseLabel}.*${stepsText}\n-# ${EMOJIS.done} *${finalLabel}*`).catch(() => null);
-    
-    // Auto-compact after 2 minutes
+    // Paso final: Confirmación
+    const finalDetailStr = details ? ` (${details.slice(0, 80)})` : '';
+    await memoryMsg.edit(`-# ${EMOJIS.done} *${finalLabel}${finalDetailStr}*`).catch(() => null);
+
+    // Auto-compactar / disimular tras 75 segundos (1.25 minutos)
     setTimeout(async () => {
-      await memoryMsg.edit(`-# ${EMOJIS.done} *${finalLabel}*`).catch(() => null);
-    }, 120000);
+      try {
+        if (thinkingState?.startTime) {
+          const elapsedMs = Date.now() - thinkingState.startTime;
+          await memoryMsg.edit(`💭 *Pensó por ${formatThinkingTime(elapsedMs)}*`).catch(() => null);
+        } else {
+          await memoryMsg.edit(`-# ${EMOJIS.done} *${finalLabel}*`).catch(() => null);
+        }
+      } catch { /* ignore */ }
+    }, 75000);
 
   } catch (err) {
     if (interval) clearInterval(interval);

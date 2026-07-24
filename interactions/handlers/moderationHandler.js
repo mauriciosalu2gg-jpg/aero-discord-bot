@@ -51,9 +51,15 @@ export async function handleModerationCommand(interaction) {
     return interaction.reply({ content: 'Este comando solo se puede usar en un servidor.', ephemeral: true });
   }
 
-  const subcommand = interaction.options.getSubcommand(false);
+  const rawSub = interaction.options.getSubcommand(false);
+  const rawAction = interaction.options.getString('accion');
+  const subcommand = rawAction || rawSub || 'activar';
 
   try {
+    if (subcommand === 'desactivar') {
+      await setModerationActive(guildId, false, 0, interaction.channelId, interaction.user.id);
+      return interaction.reply({ content: 'La automoderación ha sido **desactivada** en este servidor. 🔴', ephemeral: false });
+    }
     // ── SUBCOMANDO: GUARDIANES ──────────────────────────────
     if (subcommand === 'guardianes') {
       const gUsers = [
