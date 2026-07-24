@@ -7,10 +7,10 @@ export async function handleInteraction(interaction) {
 
   const cmd = interaction.commandName;
 
-  // Los comandos solo los puede usar Lara o Alero, excepto si es publico (actualmente ninguno)
-  if (!isCreatorOrSubCreator(interaction.user)) {
+  const isAllowed = isCreatorOrSubCreator(interaction.user) || isAdminOrHigher(interaction.user) || interaction.member?.permissions?.has?.('Administrator');
+  if (!isAllowed) {
     await interaction.reply({
-      content: 'Este comando solo lo pueden usar administradores del bot.',
+      content: '❌ Este comando solo lo pueden usar administradores del servidor o del bot.',
       ephemeral: true,
     });
     return;

@@ -87,21 +87,75 @@ export function isModerationActive(guildId) {
   return !!(state && state.active && state.status === 'active');
 }
 
+export function getModerationState(guildId) {
+  return activeGuildsCache.get(guildId) || { active: false, status: 'disabled', guardians: [], tutorialSeen: {} };
+}
+
 export async function setModerationActive(guildId, active, durationMs = 0, channelId = null, userId = null) {
+  const currentState = activeGuildsCache.get(guildId) || {};
   const state = {
+    ...currentState,
     active,
     status: active ? 'active' : 'disabled',
     cycleStart: active ? Date.now() : 0,
     cycleDuration: active ? durationMs : 0,
     nextActionAt: (active && durationMs > 0) ? Date.now() + durationMs : 0,
-    channelId: active ? channelId : null,
-    userWhoActivated: active ? userId : null
+    channelId: active ? channelId : currentState.channelId,
+    userWhoActivated: active ? userId : currentState.userWhoActivated,
+    guardians: currentState.guardians || [],
+    tutorialSeen: currentState.tutorialSeen || {}
   };
 
   activeGuildsCache.set(guildId, state);
   if (!db) return;
   await db.collection('guilds').doc(guildId).collection('stats').doc('moderation').set({
     ...state,
+    updatedAt: new Date().toISOString()
+  }, { merge: true });
+}
+
+export async function setModerationGuardians(guildId, guardiansArray) {
+  const currentState = activeGuildsCache.get(guildId) || {};
+  const uniqueGuardians = Array.from(new Set(guardiansArray.filter(Boolean)));
+  const state = {
+    ...currentState,
+    guardians: uniqueGuardians
+  };
+
+  activeGuildsCache.set(guildId, state);
+  if (!db) return;
+  await db.collection('guilds').doc(guildId).collection('stats').doc('moderation').set({
+    guardians: uniqueGuardians,
+    updatedAt: new Date().toISOString()
+  }, { merge: true });
+}
+
+export async function addGuardian(guildId, userId) {
+  const currentState = getModerationState(guildId);
+  const guardians = currentState.guardians || [];
+  if (!guardians.includes(userId)) {
+    guardians.push(userId);
+    await setModerationGuardians(guildId, guardians);
+  }
+}
+
+export function hasSeenGuardianTutorial(guildId, userId) {
+  const state = getModerationState(guildId);
+  return !!(state.tutorialSeen && state.tutorialSeen[userId]);
+}
+
+export async function markGuardianTutorialSeen(guildId, userId) {
+  const currentState = getModerationState(guildId);
+  const tutorialSeen = { ...(currentState.tutorialSeen || {}), [userId]: true };
+  const state = {
+    ...currentState,
+    tutorialSeen
+  };
+
+  activeGuildsCache.set(guildId, state);
+  if (!db) return;
+  await db.collection('guilds').doc(guildId).collection('stats').doc('moderation').set({
+    tutorialSeen,
     updatedAt: new Date().toISOString()
   }, { merge: true });
 }
@@ -121,7 +175,9 @@ export async function hydrateModerationFlags() {
           cycleDuration: data.cycleDuration || 0,
           nextActionAt: data.nextActionAt || 0,
           channelId: data.channelId || null,
-          userWhoActivated: data.userWhoActivated || null
+          userWhoActivated: data.userWhoActivated || null,
+          guardians: Array.isArray(data.guardians) ? data.guardians : [],
+          tutorialSeen: data.tutorialSeen || {}
         });
       }
     }

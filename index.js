@@ -19,7 +19,7 @@ import { webSearch, needsWebSearch } from './core/webSearch.js';
 import { computeThinkingDelay, humanizedTyping } from './core/typingDelay.js';
 import { getFlags, matchesStopPhrase, matchesResumePhrase, setFlag, hydrateFlags } from './core/behaviorFlags.js';
 import { markActivity, startIdleWatcher } from './core/idleFacts.js';
-import { looksSuspicious, analyzeWithAI, getUserPoints, addPoints, getPointsForRule, determineAction, logModeration, isModerationActive, hydrateModerationFlags, processTimedModeration } from './core/moderation/index.js';
+import { looksSuspicious, analyzeWithAI, getUserPoints, addPoints, getPointsForRule, determineAction, logModeration, isModerationActive, hydrateModerationFlags, processTimedModeration, getModerationState } from './core/moderation/index.js';
 import { handleInteraction } from './interactions/interactionCreate.js';
 import { isPendingFunadorAnswer } from './core/funadorSession.js';
 import { handleApiKeyQuestion } from './commands/apikey.js';
@@ -600,21 +600,27 @@ async function runAutoModeration(message) {
       return embed;
     };
 
+    const modState = getModerationState(guildId);
+    const guardians = modState.guardians || [];
+    const guardianPings = guardians.length > 0 ? guardians.map(id => `<@${id}>`).join(' ') : '';
+    const mentionNotice = guardianPings ? `<@${message.author.id}> 🔔 Guardianes: ${guardianPings}` : `<@${message.author.id}>`;
+    const allowedUserIds = Array.from(new Set([message.author.id, ...guardians]));
+
     switch(action) {
       case 'WARN':
         await message.channel.send({
-          content: `<@${message.author.id}>`,
+          content: mentionNotice,
           embeds: [formatEmbed('WARN', aiResult.severity_reason, totalPoints, message.author.id, aiResult.rule_violated)],
-          allowedMentions: { users: [message.author.id] }
+          allowedMentions: { users: allowedUserIds }
         });
         break;
       case 'MUTE':
         if (member && member.moderatable) {
           await member.timeout(10 * 60 * 1000, `AutoMod: ${aiResult.rule_violated}`);
           await message.channel.send({
-            content: `<@${message.author.id}>`,
+            content: mentionNotice,
             embeds: [formatEmbed('MUTE', aiResult.severity_reason, totalPoints, message.author.id, aiResult.rule_violated)],
-            allowedMentions: { users: [message.author.id] }
+            allowedMentions: { users: allowedUserIds }
           });
         } else {
           await message.channel.send({
@@ -626,9 +632,9 @@ async function runAutoModeration(message) {
         if (member && member.kickable) {
           await member.kick(`AutoMod: ${aiResult.rule_violated}`);
           await message.channel.send({
-            content: `<@${message.author.id}>`,
+            content: mentionNotice,
             embeds: [formatEmbed('KICK', aiResult.severity_reason, totalPoints, message.author.id, aiResult.rule_violated)],
-            allowedMentions: { users: [message.author.id] }
+            allowedMentions: { users: allowedUserIds }
           });
         } else {
           await message.channel.send({
@@ -640,9 +646,9 @@ async function runAutoModeration(message) {
         if (member && member.bannable) {
           await member.ban({ reason: `AutoMod: ${aiResult.rule_violated}` });
           await message.channel.send({
-            content: `<@${message.author.id}>`,
+            content: mentionNotice,
             embeds: [formatEmbed('BAN', aiResult.severity_reason, totalPoints, message.author.id, aiResult.rule_violated)],
-            allowedMentions: { users: [message.author.id] }
+            allowedMentions: { users: allowedUserIds }
           });
         } else {
           await message.channel.send({
