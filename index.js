@@ -160,6 +160,13 @@ async function startThinkingStatus(message, { emoji = EMOJIS.thinking, label = '
     console.warn('[ui] No se pudo enviar estado de pensamiento:', err.message);
   }
 
+  state.stop = () => {
+    if (state.interval) {
+      clearInterval(state.interval);
+      state.interval = null;
+    }
+  };
+
   return state;
 }
 
@@ -202,6 +209,14 @@ function computeExtraThinkingDelay({ baseMs, hasWebContext, intent, memoryIntent
 }
 
 async function runExplicitMemoryUi(message, content, mode, details = '', thinkingState = null, verboseSteps = true, forceClaude = false) {
+  if (thinkingState) {
+    if (typeof thinkingState.stop === 'function') thinkingState.stop();
+    if (thinkingState.interval) {
+      clearInterval(thinkingState.interval);
+      thinkingState.interval = null;
+    }
+  }
+
   let memoryMsg = thinkingState?.msg || null;
   let interval = null;
   const phaseLabel = mode === 'save' ? 'Guardando en la memoria' : 'Recuperando de la memoria';
