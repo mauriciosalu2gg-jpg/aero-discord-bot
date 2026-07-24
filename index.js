@@ -1222,23 +1222,34 @@ client.on('messageCreate', async (message) => {
     }
     
     const conversationSummary = [summaryForAI, summary, mediaSummary].filter(Boolean).join('\n\n');
-    const response = await askAI(llmHistory, recentTokens, {
-      moodInfo,
-      intent,
-      isOwner: context.isOwnerMessage,
-      isSubCreator: isSubCreator(message.author),
-      memorySummary: conversationSummary,
-      isGlobal: memory.isGlobal,
-      userProfile: formatProfileForPrompt(userConfig.profile),
-      webContext,
-      guild: message.guild,
-      channelName: message.channel?.name,
-      swearingAllowed: flags.swearing,
-      respectfulOnly: flags.respectfulOnly,
-      securityMode: flags.securityMode,
-      botPersonality: flags.botPersonality || 'asistente',
-      userPoints,
-    });
+    let response;
+    if (memoryIntent?.isRecall && rememberedFacts.length === 0) {
+      const errStatus = formatMemoryErrorStatus('insufficient');
+      if (thinkingState) thinkingState.memoryStatusLine = errStatus;
+      response = {
+        text: `Neta larita, estuve revisando toda mi memoria global y no tengo datos u hechos guardados de otros servidores todavía.`,
+        provider: 'MemoryEngine',
+        model: 'DirectRecall'
+      };
+    } else {
+      response = await askAI(llmHistory, recentTokens, {
+        moodInfo,
+        intent,
+        isOwner: context.isOwnerMessage,
+        isSubCreator: isSubCreator(message.author),
+        memorySummary: conversationSummary,
+        isGlobal: memory.isGlobal,
+        userProfile: formatProfileForPrompt(userConfig.profile),
+        webContext,
+        guild: message.guild,
+        channelName: message.channel?.name,
+        swearingAllowed: flags.swearing,
+        respectfulOnly: flags.respectfulOnly,
+        securityMode: flags.securityMode,
+        botPersonality: flags.botPersonality || 'asistente',
+        userPoints,
+      });
+    }
 
     lastAIResponse = { provider: response.provider, model: response.model };
 
