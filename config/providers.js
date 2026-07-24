@@ -88,6 +88,12 @@ export function getRepetitionControls(intent = 'chat') {
   return { presence_penalty: 0.1, frequency_penalty: 0.1 };
 }
 
+export function isBasicModel(providerName, modelName) {
+  if (!modelName) return false;
+  const lower = String(modelName).toLowerCase();
+  return lower.includes('mini') || lower.includes('flash') || lower.includes('8b') || lower.includes('haiku') || lower.includes('lite') || lower.includes('small');
+}
+
 export default {
   STATS_WINDOW_SIZE,
   PROVIDER_PRIORITY,
@@ -98,4 +104,5 @@ export default {
   getCooldownMs,
   getMaxTokens,
   getRepetitionControls,
+  isBasicModel,
 };
