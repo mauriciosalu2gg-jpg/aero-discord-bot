@@ -759,18 +759,17 @@ async function runAutoModeration(message) {
 
   try {
     const { EmbedBuilder } = await import('discord.js');
+    const levels = [
+      { threshold: 100, label: 'Baneo permanente', color: 0xED4245 },
+      { threshold: 70,  label: 'Expulsión',         color: 0xE67E22 },
+      { threshold: 40,  label: 'Silencio temporal', color: 0xF1C40F },
+      { threshold: 20,  label: 'Advertencia',       color: 0x3498DB },
+      { threshold: 0,   label: 'Aviso Menor',       color: 0x95A5A6 },
+    ];
+    const currentLevel = levels.find(l => totalPoints >= l.threshold) || levels[4];
+    const nextLevel = levels.slice().reverse().find(l => totalPoints < l.threshold);
+
     const formatEmbed = (actionType, reason, pts, authorId, rule) => {
-      const levels = [
-        { threshold: 100, label: 'Baneo permanente', color: 0xED4245 },
-        { threshold: 70,  label: 'Expulsión',         color: 0xE67E22 },
-        { threshold: 40,  label: 'Silencio temporal', color: 0xF1C40F },
-        { threshold: 20,  label: 'Advertencia',       color: 0x3498DB },
-        { threshold: 0,   label: 'Aviso Menor',       color: 0x95A5A6 },
-      ];
-      
-      const currentLevel = levels.find(l => pts >= l.threshold) || levels[4];
-      const nextLevel = levels.slice().reverse().find(l => pts < l.threshold);
-      
       let title = '⚠️ Sistema de Auto-Moderación';
       if (actionType === 'WARN') title = '⚠️ Advertencia de Moderación';
       if (actionType === 'MUTE') title = '🔇 Silencio Temporal Aplicado';
