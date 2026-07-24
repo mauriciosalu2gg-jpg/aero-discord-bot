@@ -957,70 +957,12 @@ client.on('messageCreate', async (message) => {
 
   if (guildId) config.registerGuild(message.guild);
 
-  const content = message.content.replace(/<@!?\d+>/g, '').trim();
+  const cleanContent = message.content.replace(/<@!?\d+>/g, '').trim();
+  const content = cleanContent || (wasExplicitlyCalled ? 'hola' : '');
   if (!content) return;
 
-  // Auto-actualizar identidad del usuario (detecta cambios de username/displayName)
-  (async () => {
-    try {
-      const { saveUserIdentity } = await import('./core/memory/index.js');
-      const currentNames = [
-        message.author.username,
-        message.author.globalName,
-        message.member?.displayName,
-      ].filter(Boolean);
-      await saveUserIdentity(message.author.id, {
-        discordId: message.author.id,
-        names: currentNames,
-        nicknames: [],
-        facts: [],
-      });
-    } catch { /* silencioso */ }
-  })();
-  // Si mencionaron al bot directamente, le respondieron a su mensaje, o es
-  // DM, SIEMPRE contesta, sin importar que tan corto sea el texto ("hola",
-  // "que", etc). El filtro de isNaturalPrompt (pensado para no reaccionar a
-  // comandos sueltos tipo "!ban" o palabras random) solo debe aplicar cuando
-  // el bot esta en forceTalk y NADIE lo llamo explicitamente.
-  const wasExplicitlyCalled = isMentioned || isReplyToBot || isDM;
-  if (!wasExplicitlyCalled && !flags.forceTalk && !isNaturalPrompt(content)) {
-    console.log(`[msg] descartado por isNaturalPrompt: "${content}"`);
-    return;
-  }
-
-  // Si Lara o Alero preguntan directo por api key/modelo/tokens gastados
-  // en texto plano (compatibilidad con el viejo estilo, ademas del slash
-  // command /ai status), el bot esta OBLIGADO a contestar con datos
-  // reales, sin pasar por la IA.
-  const guildTokens = guildId ? await config.getTokenUsage(guildId).catch(() => null) : null;
-  const wasApiKeyQuestion = await handleApiKeyQuestion(message, guildTokens).catch(err => {
-    console.error('[command]', err.message);
-    return false;
-  });
+  const wasApiKeyQuestion = await handleApiKeyQuestion(message, guildId ? await config.getTokenUsage(guildId).catch(() => null) : null).catch(() => false);
   if (wasApiKeyQuestion) return;
-
-  // --- COMPROBACIÓN DE RATE LIMIT ---
-  const rlStatus = handleRateLimit(message.author.id);
-  if (rlStatus === 'WARN') {
-    await message.reply("⏳ ¡Vas muy rápido! Estoy recibiendo demasiadas solicitudes. Espera un momento a que termine con las anteriores.");
-    return;
-  } else if (rlStatus === 'BLOCKED') {
-    return; // Ya fue advertido, ignorar en silencio
-  }
-
-  if (!global.activeUserProcessesTimes) global.activeUserProcessesTimes = new Map();
-
-  if (activeUserProcesses.has(message.author.id)) {
-    const lastTime = global.activeUserProcessesTimes.get(message.author.id) || 0;
-    if (Date.now() - lastTime > 30000) {
-      activeUserProcesses.delete(message.author.id);
-    } else {
-      await message.reply("⏳ Espera un momento a que termine de responder tu mensaje anterior.").catch(() => {});
-      return;
-    }
-  }
-  activeUserProcesses.add(message.author.id);
-  global.activeUserProcessesTimes.set(message.author.id, Date.now());
   // ----------------------------------
 
   try {
