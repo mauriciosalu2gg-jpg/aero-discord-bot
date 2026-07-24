@@ -743,14 +743,12 @@ async function runAutoModeration(message) {
   // Si la IA tiene baja confianza, solo advertimos y no sumamos puntos,
   // o sumamos 0 puntos pero queda registrado.
   if (aiResult.confidence < 85) {
-    console.log(`[moderation] Baja confianza (${aiResult.confidence}%). Aplicando solo WARN.`);
-    action = 'WARN';
-    totalPoints = await getUserPoints(guildId, message.author.id); // sin sumar
-  } else {
-    const pointsToAdd = getPointsForRule(aiResult.rule_violated);
-    totalPoints = await addPoints(guildId, message.author.id, pointsToAdd);
-    action = determineAction(totalPoints);
+    console.log(`[moderation] Baja confianza (${aiResult.confidence}%). Se omite sanción para evitar falsos positivos.`);
+    return false;
   }
+  const pointsToAdd = getPointsForRule(aiResult.rule_violated);
+  totalPoints = await addPoints(guildId, message.author.id, pointsToAdd);
+  action = determineAction(totalPoints);
 
   const member = message.member;
 
@@ -1240,8 +1238,9 @@ client.on('messageCreate', async (message) => {
     if (memoryIntent?.isRecall && rememberedFacts.length === 0) {
       const errStatus = formatMemoryErrorStatus('insufficient');
       if (thinkingState) thinkingState.memoryStatusLine = errStatus;
+      const callerName = isOwner(message.author) ? 'larita' : (message.member?.displayName || message.author.username);
       response = {
-        text: `Neta larita, estuve revisando toda mi memoria global y no tengo datos u hechos guardados de otros servidores todavía.`,
+        text: `Neta ${callerName}, estuve revisando toda mi memoria global y no tengo datos u hechos guardados de otros servidores todavía.`,
         provider: 'MemoryEngine',
         model: 'DirectRecall'
       };
