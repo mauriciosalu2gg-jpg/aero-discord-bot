@@ -1052,19 +1052,19 @@ client.on('messageCreate', async (message) => {
       const extraThinkingDelay = computeExtraThinkingDelay({ baseMs: 1600, hasWebContext: false, intent: 'chat', memoryIntent: { isExplicit: true }, contentLength: finalContent.length });
       if (extraThinkingDelay > 1600) await sleep(extraThinkingDelay);
 
-      // Evaluar permisos de Admin/Owner/SubCreator para opciones de visibilidad de pasos
-      const isUserAdminOrHigher = isOwner(message.author) || isSubCreator(message.author) || isAdminOrHigher(message.author) || message.member?.permissions?.has?.('Administrator');
-      
-      let effectiveVerboseSteps = flags.verboseMemorySteps;
+      // Por defecto cualquier petición explícita de memoria muestra sus pasos 50/50
+      let effectiveVerboseSteps = true;
       let askedForSteps = false;
 
-      if (isUserAdminOrHigher) {
-        if (/compacta(damente|do)?|sin (mostrar )?pasos|no (muestres|pongas) (los )?pasos|oculta (los )?pasos/i.test(finalContent)) {
-          effectiveVerboseSteps = false;
-        } else if (/muéstrame|muestrame|enseñame|enséñame|los pasos|con pasos|paso a paso|detallado|explicame|explícame|explicito(s)?/i.test(finalContent)) {
-          askedForSteps = true;
-          effectiveVerboseSteps = true;
-        }
+      // Si se pide explícitamente formato compacto:
+      if (/compacta(damente|do)?|sin (mostrar )?pasos|no (muestres|pongas) (los )?pasos|oculta (los )?pasos/i.test(finalContent)) {
+        effectiveVerboseSteps = false;
+      }
+
+      // Si un admin/owner pide ver los pasos explícitamente (modo Claude ❥)
+      if (isUserAdminOrHigher && /muéstrame|muestrame|enseñame|enséñame|los pasos|con pasos|paso a paso|detallado|explicame|explícame|explicito(s)?/i.test(finalContent)) {
+        askedForSteps = true;
+        effectiveVerboseSteps = true;
       }
 
       await Promise.all([
@@ -1077,19 +1077,19 @@ client.on('messageCreate', async (message) => {
       const extraThinkingDelay = computeExtraThinkingDelay({ baseMs: 1600, hasWebContext: false, intent: 'chat', memoryIntent: { isExplicit: true }, contentLength: finalContent.length });
       if (extraThinkingDelay > 1600) await sleep(extraThinkingDelay);
 
-      // Evaluar permisos de Admin/Owner/SubCreator para opciones de visibilidad de pasos
-      const isUserAdminOrHigher = isOwner(message.author) || isSubCreator(message.author) || isAdminOrHigher(message.author) || message.member?.permissions?.has?.('Administrator');
-      
-      let effectiveVerboseSteps = flags.verboseMemorySteps;
+      // Por defecto cualquier petición explícita de memoria muestra sus pasos 50/50
+      let effectiveVerboseSteps = true;
       let askedForSteps = false;
 
-      if (isUserAdminOrHigher) {
-        if (/compacta(damente|do)?|sin (mostrar )?pasos|no (muestres|pongas) (los )?pasos|oculta (los )?pasos/i.test(finalContent)) {
-          effectiveVerboseSteps = false;
-        } else if (/muéstrame|muestrame|enseñame|enséñame|los pasos|con pasos|paso a paso|detallado|explicame|explícame|explicito(s)?/i.test(finalContent)) {
-          askedForSteps = true;
-          effectiveVerboseSteps = true;
-        }
+      // Si se pide explícitamente formato compacto:
+      if (/compacta(damente|do)?|sin (mostrar )?pasos|no (muestres|pongas) (los )?pasos|oculta (los )?pasos/i.test(finalContent)) {
+        effectiveVerboseSteps = false;
+      }
+
+      // Si un admin/owner pide ver los pasos explícitamente (modo Claude ❥)
+      if (isUserAdminOrHigher && /muéstrame|muestrame|enseñame|enséñame|los pasos|con pasos|paso a paso|detallado|explicame|explícame|explicito(s)?/i.test(finalContent)) {
+        askedForSteps = true;
+        effectiveVerboseSteps = true;
       }
 
       await runExplicitMemoryUi(message, finalContent, 'recall', details, thinkingState, effectiveVerboseSteps, askedForSteps);

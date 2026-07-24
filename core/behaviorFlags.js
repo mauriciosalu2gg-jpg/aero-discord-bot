@@ -25,6 +25,7 @@ const DEFAULTS = {
   forceTalk: false,
   securityMode: false,
   funador: false,
+  verboseMemorySteps: true,
 };
 
 // guildId (o 'global') -> flags completos ya resueltos con DEFAULTS
