@@ -1083,7 +1083,7 @@ client.on('messageCreate', async (message) => {
       }
 
       await Promise.all([
-        saveUserMemory(message.author.id, guildId, userConfig.mode, memory, channelId),
+        saveUserMemory(message.author.id, guildId, userConfig.mode, memory, channelId).catch(err => console.warn('[memory-save] Non-fatal error:', err.message)),
         runExplicitMemoryUi(message, finalContent, 'save', details, thinkingState, effectiveVerboseSteps, askedForSteps),
       ]);
     } else if (memoryIntent.isRecall && userConfig.mode !== 'off') {

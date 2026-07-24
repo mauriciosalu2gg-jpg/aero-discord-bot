@@ -133,6 +133,13 @@ async function callOllama(baseUrl, model, messages, temperature = 0.3) {
 /**
  * Ejecuta una petición al Memory Engine con fallback automático entre proveedores.
  */
+function resolveGroqModelName(model) {
+  if (model === 'llama-3.1-8b') return 'llama-3.1-8b-instant';
+  if (model === 'llama-3.3-70b') return 'llama-3.3-70b-versatile';
+  if (model === 'gemma-3') return 'gemma2-9b-it';
+  return model || 'llama-3.1-8b-instant';
+}
+
 export async function askMemoryEngine(task, messages, temperature = 0.3) {
   const cfg = secrets.getMemoryConfig();
   if (!cfg.enabled) {
@@ -140,15 +147,15 @@ export async function askMemoryEngine(task, messages, temperature = 0.3) {
   }
 
   const modelMap = {
-    topic: cfg.topicModel || 'llama-3.1-8b',
-    summary: cfg.summaryModel || 'llama-3.3-70b',
-    profile: cfg.profileModel || 'gemma-3',
+    topic: cfg.topicModel || 'llama-3.1-8b-instant',
+    summary: cfg.summaryModel || 'llama-3.3-70b-versatile',
+    profile: cfg.profileModel || 'gemma2-9b-it',
   };
   const model = modelMap[task] || modelMap.summary;
   const providers = getMemoryProviders();
 
   if (providers.length === 0) {
-    throw new Error('[MemoryEngine] No hay proveedores de memoria configurados (MEMORY_GROQ_KEY_1, MEMORY_OPENROUTER_KEY, etc).');
+    throw new Error('[MemoryEngine] No hay proveedores de memoria configurados.');
   }
 
   const errors = [];
@@ -157,7 +164,7 @@ export async function askMemoryEngine(task, messages, temperature = 0.3) {
       let result;
       switch (provider.type) {
         case 'groq':
-          result = await callGroq(provider.apiKey, model, messages, temperature);
+          result = await callGroq(provider.apiKey, resolveGroqModelName(model), messages, temperature);
           break;
         case 'openrouter':
           result = await callOpenRouter(provider.apiKey, model, messages, temperature);

@@ -30,9 +30,9 @@ const SECRETS = {
     geminiKey: process.env.MEMORY_GEMINI_KEY || '',
     ollamaUrl: process.env.MEMORY_OLLAMA_URL || 'http://localhost:11434',
     openrouterKey: process.env.MEMORY_OPENROUTER_KEY || '',
-    topicModel: process.env.MEMORY_TOPIC_MODEL || 'llama-3.1-8b',
-    summaryModel: process.env.MEMORY_SUMMARY_MODEL || 'llama-3.3-70b',
-    profileModel: process.env.MEMORY_PROFILE_MODEL || 'gemma-3',
+    topicModel: process.env.MEMORY_TOPIC_MODEL || 'llama-3.1-8b-instant',
+    summaryModel: process.env.MEMORY_SUMMARY_MODEL || 'llama-3.3-70b-versatile',
+    profileModel: process.env.MEMORY_PROFILE_MODEL || 'gemma2-9b-it',
   },
 };
 
