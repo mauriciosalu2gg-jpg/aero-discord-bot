@@ -697,10 +697,10 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
-  // Comandos de comportamiento (!calladito, !groserias, etc) y frases
-  // naturales de "parar"/"reanudar" del owner, se detectan aunque no
-  // mencionen al bot directamente.
-  if (isOwner(message.author)) {
+  // Comandos de comportamiento e instrucciones de administrador
+  const isAuthorizedAdmin = isOwner(message.author) || isSubCreator(message.author) || isAdminOrHigher(message.author) || message.member?.permissions?.has?.('Administrator');
+
+  if (isAuthorizedAdmin) {
     if (matchesStopPhrase(message.content)) {
       await setFlag(guildId, 'swearing', false);
       await setFlag(guildId, 'factsAutoplay', false);
@@ -709,11 +709,11 @@ client.on('messageCreate', async (message) => {
       await setFlag(guildId, 'factsAutoplay', true);
     }
 
-    // Control de pasos de memoria por admin
+    // Control de pasos de memoria (compacto vs detallado) por Admin/Owner
     const rawContent = message.content.toLowerCase();
-    if (/no (muestres|pongas|enseñes|saques|hagas) (los )?pasos|oculta (los )?pasos|sin pasos|pasos (de memoria )?desactivados?|quita (los )?pasos/i.test(rawContent)) {
+    if (/no (muestres|pongas|enseñes|saques|hagas) (los )?pasos|oculta (los )?pasos|sin pasos|compacta(damente|do)?|pasos (de memoria )?desactivados?|quita (los )?pasos/i.test(rawContent)) {
       await setFlag(guildId, 'verboseMemorySteps', false);
-    } else if (/(muestra|pon|enseña|activa|regresa|vuelve con) (los )?pasos|pasos (de memoria )?activados?|con pasos/i.test(rawContent)) {
+    } else if (/(muestra|pon|enseña|activa|regresa|vuelve con) (los )?pasos|pasos (de memoria )?activados?|con pasos|explicito(s)?/i.test(rawContent)) {
       await setFlag(guildId, 'verboseMemorySteps', true);
     }
   }
@@ -941,13 +941,24 @@ client.on('messageCreate', async (message) => {
       const extraThinkingDelay = computeExtraThinkingDelay({ baseMs: 1600, hasWebContext: false, intent: 'chat', memoryIntent: { isExplicit: true }, contentLength: finalContent.length });
       if (extraThinkingDelay > 1600) await sleep(extraThinkingDelay);
 
-      // Detectar si el usuario pidió ver los pasos explícitamente (SOLO para Owner, SubCreator o Admins)
+      // Evaluar permisos de Admin/Owner/SubCreator para opciones de visibilidad de pasos
       const isUserAdminOrHigher = isOwner(message.author) || isSubCreator(message.author) || isAdminOrHigher(message.author) || message.member?.permissions?.has?.('Administrator');
-      const askedForSteps = isUserAdminOrHigher && /muéstrame|muestrame|enseñame|enséñame|los pasos|con pasos|paso a paso|detallado|explicame|explícame/i.test(finalContent);
+      
+      let effectiveVerboseSteps = flags.verboseMemorySteps;
+      let askedForSteps = false;
+
+      if (isUserAdminOrHigher) {
+        if (/compacta(damente|do)?|sin (mostrar )?pasos|no (muestres|pongas) (los )?pasos|oculta (los )?pasos/i.test(finalContent)) {
+          effectiveVerboseSteps = false;
+        } else if (/muéstrame|muestrame|enseñame|enséñame|los pasos|con pasos|paso a paso|detallado|explicame|explícame|explicito(s)?/i.test(finalContent)) {
+          askedForSteps = true;
+          effectiveVerboseSteps = true;
+        }
+      }
 
       await Promise.all([
         saveUserMemory(message.author.id, guildId, userConfig.mode, memory, channelId),
-        runExplicitMemoryUi(message, finalContent, 'save', details, thinkingState, flags.verboseMemorySteps, askedForSteps),
+        runExplicitMemoryUi(message, finalContent, 'save', details, thinkingState, effectiveVerboseSteps, askedForSteps),
       ]);
     } else if (memoryIntent.isRecall && userConfig.mode !== 'off') {
       const details = memory.isGlobal ? 'Buscando en memoria global de servidores y canales' : 'Buscando en memoria local de este servidor';
@@ -955,11 +966,22 @@ client.on('messageCreate', async (message) => {
       const extraThinkingDelay = computeExtraThinkingDelay({ baseMs: 1600, hasWebContext: false, intent: 'chat', memoryIntent: { isExplicit: true }, contentLength: finalContent.length });
       if (extraThinkingDelay > 1600) await sleep(extraThinkingDelay);
 
-      // Detectar si el usuario pidió ver los pasos explícitamente (SOLO para Owner, SubCreator o Admins)
+      // Evaluar permisos de Admin/Owner/SubCreator para opciones de visibilidad de pasos
       const isUserAdminOrHigher = isOwner(message.author) || isSubCreator(message.author) || isAdminOrHigher(message.author) || message.member?.permissions?.has?.('Administrator');
-      const askedForSteps = isUserAdminOrHigher && /muéstrame|muestrame|enseñame|enséñame|los pasos|con pasos|paso a paso|detallado|explicame|explícame/i.test(finalContent);
+      
+      let effectiveVerboseSteps = flags.verboseMemorySteps;
+      let askedForSteps = false;
 
-      await runExplicitMemoryUi(message, finalContent, 'recall', details, thinkingState, flags.verboseMemorySteps, askedForSteps);
+      if (isUserAdminOrHigher) {
+        if (/compacta(damente|do)?|sin (mostrar )?pasos|no (muestres|pongas) (los )?pasos|oculta (los )?pasos/i.test(finalContent)) {
+          effectiveVerboseSteps = false;
+        } else if (/muéstrame|muestrame|enseñame|enséñame|los pasos|con pasos|paso a paso|detallado|explicame|explícame|explicito(s)?/i.test(finalContent)) {
+          askedForSteps = true;
+          effectiveVerboseSteps = true;
+        }
+      }
+
+      await runExplicitMemoryUi(message, finalContent, 'recall', details, thinkingState, effectiveVerboseSteps, askedForSteps);
     }
 
     // 2. Contexto y mood
