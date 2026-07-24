@@ -1,5 +1,5 @@
 // index.js
-import { Client, GatewayIntentBits, Partials } from 'discord.js';
+import { Client, GatewayIntentBits, Partials, REST, Routes } from 'discord.js';
 import http from 'node:http';
 import config from './config.js';
 import secrets from './secrets.js';
@@ -8,6 +8,7 @@ import { validateAllProviders } from './services/ai/modelValidator.js';
 
 import { getUserMemory, saveUserMemory, getRelevantTopics } from './core/memory/index.js';
 import { getUserMemoryConfig, formatProfileForPrompt } from './core/memory/config.js';
+import { commandDefinitions } from './interactions/commandDefinitions.js';
 import { isOwner, isSubCreator } from './core/permissions.js';
 import { analyzeContext } from './core/contextAnalyzer.js';
 import { detectMood } from './core/moodEngine.js';
@@ -337,6 +338,19 @@ client.once('ready', async () => {
     }
   });
   startConfigRefresh(5);
+
+  // Auto-deploy de comandos globales al arrancar para que Discord siempre tenga
+  // la lista actualizada (esto borra automaticamente comandos viejos como /ia).
+  try {
+    const _rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+    const clientId = process.env.DISCORD_CLIENT_ID;
+    if (clientId) {
+      await _rest.put(Routes.applicationCommands(clientId), { body: commandDefinitions });
+      console.log(`[discord] Comandos globales sincronizados (${commandDefinitions.length} comandos).`);
+    }
+  } catch (err) {
+    console.warn('[discord] No se pudieron sincronizar comandos globales:', err.message);
+  }
   config.updateBotStatus(client, lastAIResponse);
   setInterval(() => config.updateBotStatus(client, lastAIResponse), 30000);
 
