@@ -68,6 +68,43 @@ function formatMemoryErrorStatus(errorType, rawMessage = '') {
   }
 }
 
+/** Convierte automáticamente emojis unicode genéricos en emojis personalizados del servidor */
+function replaceUnicodeWithServerEmojis(text, guild = null) {
+  if (!text) return text;
+  
+  let customEmojiList = ['<:aceptar:1527959750443012187>', '<:pensar:1527960192787025920>', '<:hojita:1527960400975630436>', '<:servidor:1527959988184682506>', '<:recuperar:1528121773764116651>'];
+  if (guild && guild.emojis?.cache?.size > 0) {
+    customEmojiList = guild.emojis.cache.first(6).map(e => e.toString());
+  }
+
+  const defaultAccept = customEmojiList[0] || '<:aceptar:1527959750443012187>';
+  const defaultThink = customEmojiList[1] || customEmojiList[0] || '<:pensar:1527960192787025920>';
+  const defaultLeaf = customEmojiList[2] || customEmojiList[0] || '<:hojita:1527960400975630436>';
+
+  const unicodeMap = {
+    '😂': defaultAccept,
+    '😊': defaultLeaf,
+    '💖': defaultAccept,
+    '😜': defaultLeaf,
+    '🔥': defaultThink,
+    '💭': defaultThink,
+    '👍': defaultAccept,
+    '😍': defaultLeaf,
+    '😎': defaultAccept,
+    '🥰': defaultLeaf,
+    '😅': defaultThink,
+    '😄': defaultAccept,
+    '😉': defaultLeaf,
+    '😁': defaultAccept,
+  };
+
+  let clean = text;
+  for (const [uEmoji, cEmoji] of Object.entries(unicodeMap)) {
+    clean = clean.replaceAll(uEmoji, cEmoji);
+  }
+  return clean;
+}
+
 // Trackea canales activos (donde el bot ya hablo al menos una vez) para el
 // watcher de inactividad, sin necesidad de guardar esto en DB.
 const trackedChannels = new Map(); // channelId -> { guildId }
@@ -1300,11 +1337,12 @@ client.on('messageCreate', async (message) => {
       pingPrefix = `<@${message.author.id}> `;
     }
 
-    // 8. Sanitizar respuesta vacía o con solo '...'
+    // 8. Sanitizar respuesta vacía o con solo '...' y reemplazar emojis unicode por los del servidor
     let cleanText = (response.text || '').trim();
     if (!cleanText || cleanText === '...' || cleanText === '..' || cleanText === '.') {
       cleanText = 'jaja qué pedo, qué me decías?';
     }
+    cleanText = replaceUnicodeWithServerEmojis(cleanText, message.guild);
 
     // 9. Fragmentar la respuesta como escribe una persona real
     const parts = splitHumanized(cleanText, moodInfo);

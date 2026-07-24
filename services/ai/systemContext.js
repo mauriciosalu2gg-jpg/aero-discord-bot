@@ -35,11 +35,11 @@ function creatorPromptExtra({ isOwner = false, isSubCreator = false } = {}) {
 }
 
 function emojiGuideText(guild) {
+  let customEmojisStr = '<:aceptar:1527959750443012187> <:pensar:1527960192787025920> <:hojita:1527960400975630436> <:servidor:1527959988184682506> <:recuperar:1528121773764116651>';
   if (guild && guild.emojis?.cache?.size > 0) {
-    const customEmojis = guild.emojis.cache.first(6).map(e => e.toString()).join(' ');
-    return `Prefiere usar estos emojis personalizados de este servidor: ${customEmojis}. Si ninguno encaja, usa emojis Unicode estándar (😊, 💭, 🎮, ⚡).`;
+    customEmojisStr = guild.emojis.cache.first(8).map(e => e.toString()).join(' ');
   }
-  return 'Usa exclusivamente emojis Unicode estándar limpios (😊, 💭, 🎮, ⚡, 💬). NUNCA uses ni inventes códigos de emojis extraños.';
+  return `⚠️ REGLA DE EMOJIS OBLIGATORIA: Usa EXCLUSIVAMENTE emojis personalizados del servidor como estos en tus frases: ${customEmojisStr}. NUNCA uses emojis unicode genéricos (😂, 😊, 💖, 😜) salvo que el servidor carezca por completo de emojis personalizados.`;
 }
 
 function buildSystemContext({
