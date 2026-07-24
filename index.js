@@ -243,20 +243,30 @@ async function runExplicitMemoryUi(message, content, mode, details = '', thinkin
         await sleep(2200);
         clearInterval(interval);
 
-        const detailStr = details ? ` (${details.slice(0, 80)})` : '';
-        await memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory.*\n-# ${phaseEmoji} *${phaseLabel}...*${detailStr}`).catch(() => null);
-        await sleep(2400);
+        const statusLine = `-# ${EMOJIS.done} *${finalLabel}*`;
+        if (thinkingState) thinkingState.memoryFooter = statusLine;
 
-        await memoryMsg.edit(`-# ${EMOJIS.done} *${finalLabel}*`).catch(() => null);
+        if (thinkingState?.aiResponseText) {
+          await memoryMsg.edit(`${thinkingState.aiResponseText}\n${statusLine}`).catch(() => null);
+        } else {
+          await memoryMsg.edit(statusLine).catch(() => null);
+        }
 
-        // Tras 75 segundos, edita de regreso a "Pensó por X segundos/minutos" para disimular
+        // Tras 75 segundos, edita el footer de regreso a "Pensó por X segundos/minutos" para disimular
         setTimeout(async () => {
           try {
             if (thinkingState?.startTime) {
               const elapsedMs = Date.now() - thinkingState.startTime;
-              await memoryMsg.edit(`💭 *Pensó por ${formatThinkingTime(elapsedMs)}*`).catch(() => null);
-            } else if (createdNew) {
-              await memoryMsg.delete().catch(() => null);
+              const formattedTime = formatThinkingTime(elapsedMs);
+              const hideFooter = `💭 *Pensó por ${formattedTime}*`;
+
+              if (thinkingState.aiResponseText) {
+                await memoryMsg.edit(`${thinkingState.aiResponseText}\n${hideFooter}`).catch(() => null);
+              } else if (createdNew) {
+                await memoryMsg.delete().catch(() => null);
+              } else {
+                await memoryMsg.edit(hideFooter).catch(() => null);
+              }
             }
           } catch { /* ignore */ }
         }, 75000);
@@ -334,16 +344,28 @@ async function runExplicitMemoryUi(message, content, mode, details = '', thinkin
 
     // Paso final: Confirmación
     const finalDetailStr = details ? ` (${details.slice(0, 80)})` : '';
-    await memoryMsg.edit(`-# ${EMOJIS.done} *${finalLabel}${finalDetailStr}*`).catch(() => null);
+    const statusLine = `-# ${EMOJIS.done} *${finalLabel}${finalDetailStr}*`;
+    if (thinkingState) thinkingState.memoryFooter = statusLine;
+
+    if (thinkingState?.aiResponseText) {
+      await memoryMsg.edit(`${thinkingState.aiResponseText}\n${statusLine}`).catch(() => null);
+    } else {
+      await memoryMsg.edit(statusLine).catch(() => null);
+    }
 
     // Auto-compactar / disimular tras 75 segundos (1.25 minutos)
     setTimeout(async () => {
       try {
         if (thinkingState?.startTime) {
           const elapsedMs = Date.now() - thinkingState.startTime;
-          await memoryMsg.edit(`💭 *Pensó por ${formatThinkingTime(elapsedMs)}*`).catch(() => null);
-        } else {
-          await memoryMsg.edit(`-# ${EMOJIS.done} *${finalLabel}*`).catch(() => null);
+          const formattedTime = formatThinkingTime(elapsedMs);
+          const hideFooter = `💭 *Pensó por ${formattedTime}*`;
+
+          if (thinkingState.aiResponseText) {
+            await memoryMsg.edit(`${thinkingState.aiResponseText}\n${hideFooter}`).catch(() => null);
+          } else {
+            await memoryMsg.edit(hideFooter).catch(() => null);
+          }
         }
       } catch { /* ignore */ }
     }, 75000);
@@ -1222,7 +1244,10 @@ client.on('messageCreate', async (message) => {
         const chunk = chunks[j];
         
         if (!firstMessageEdited && thinkingMsg) {
-          await thinkingMsg.edit(`${pingPrefix}${chunk}\n-# ${EMOJIS.thinking} *Pensó por ${thinkingTime}*`).catch(() => null);
+          const fullContent = `${pingPrefix}${chunk}`;
+          if (thinkingState) thinkingState.aiResponseText = fullContent;
+          const footerStr = thinkingState?.memoryFooter || `-# ${EMOJIS.thinking} *Pensó por ${thinkingTime}*`;
+          await thinkingMsg.edit(`${fullContent}\n${footerStr}`).catch(() => null);
           firstMessageEdited = true;
         } else {
           await message.channel.send(chunk);
