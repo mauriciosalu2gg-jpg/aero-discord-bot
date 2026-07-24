@@ -1,9 +1,18 @@
 import { handleEstado } from './ai/estado.js';
 import { handleProveedor } from './ai/proveedor.js';
 import { handleImaginar } from './ai/imaginar.js';
-import { handleMemoria } from './ai/memoria.js';
 import { handlePersonalidad } from './ai/personalidad.js';
 import { clearPoints, getUserPoints } from '../../core/moderation/index.js';
+import { isAdminOrHigher } from '../../core/permissions.js';
+import { askAI } from '../../services/aiManager.js';
+import { getUserMemoryConfig, setUserMemoryConfig } from '../../core/memory/config.js';
+import { resetUserMemory } from '../../core/memory/index.js';
+
+function isAltoMando(interaction) {
+  // Dueño del servidor o rol de admin del bot
+  return interaction.member?.permissions?.has('Administrator')
+    || isAdminOrHigher(interaction.user);
+}
 
 export async function handleAiCommand(interaction) {
   try {
@@ -27,7 +36,10 @@ export async function handleAiCommand(interaction) {
       });
     }
 
-    await interaction.deferReply({ ephemeral: false }).catch(() => {});
+    // Deferimos solo si aún no se ha respondido
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply({ ephemeral: false }).catch(() => {});
+    }
 
     if (subcommand === 'chat') {
       const mensaje = interaction.options.getString('mensaje');
@@ -46,9 +58,9 @@ export async function handleAiCommand(interaction) {
       if (guildId && ptsResetUser) {
         const oldPoints = await getUserPoints(guildId, ptsResetUser.id);
         await clearPoints(guildId, ptsResetUser.id);
-        await interaction.followUp(`✨ Puntos de **${ptsResetUser.username}** reiniciados con éxito por buena conducta. (Tenía ${oldPoints} pts).`);
+        await interaction.editReply(`✨ Puntos de **${ptsResetUser.username}** reiniciados con éxito por buena conducta. (Tenía ${oldPoints} pts).`);
       } else {
-        await interaction.followUp('❌ Este comando solo funciona en servidores.');
+        await interaction.editReply('❌ Este comando solo funciona en servidores.');
       }
       return;
     }
@@ -56,40 +68,62 @@ export async function handleAiCommand(interaction) {
     if (subcommand === 'proveedor') {
       const proveedor = interaction.options.getString('nombre');
       await handleProveedor(interaction, proveedor);
-      await interaction.followUp('✅ Proveedor actualizado.');
+      await interaction.editReply('✅ Proveedor actualizado.');
       return;
     }
+
     if (subcommand === 'estado') {
       await handleEstado(interaction);
       return;
     }
+
     if (subcommand === 'imaginar') {
       const prompt = interaction.options.getString('prompt');
       await handleImaginar(interaction, prompt);
       return;
     }
+
     if (subcommand === 'limpiar_memoria') {
-      await handleMemoria(interaction, 'limpiar');
-      await interaction.followUp('✅ Memoria limpiada.');
+      const userId = interaction.user.id;
+      const guildId = interaction.guildId;
+      try {
+        const config = await getUserMemoryConfig(userId);
+        await resetUserMemory(userId, guildId, config.mode, interaction.channelId);
+        await interaction.editReply({ content: '🧹 Memoria limpiada exitosamente. El historial de conversación fue borrado.', ephemeral: false });
+      } catch (e) {
+        await interaction.editReply({ content: `❌ Error al limpiar memoria: ${e.message}` });
+      }
       return;
     }
+
     if (subcommand === 'modo_memoria') {
       const nivel = interaction.options.getString('nivel');
-      await handleMemoria(interaction, 'modo', nivel);
-      await interaction.followUp(`✅ Modo de memoria cambiado a **${nivel}**.`);
+      const userId = interaction.user.id;
+      try {
+        const config = await getUserMemoryConfig(userId);
+        config.mode = nivel;
+        await setUserMemoryConfig(userId, config);
+        const modeLabel = nivel === 'global' ? '🌐 Global (compartida entre servidores)' : '🏠 Local (solo este servidor)';
+        await interaction.editReply(`✅ Modo de memoria cambiado a **${modeLabel}**.\nTus próximas conversaciones usarán este modo.`);
+      } catch (e) {
+        await interaction.editReply(`❌ Error al cambiar modo: ${e.message}`);
+      }
       return;
     }
+
     if (subcommand === 'nombre_y_pronombre') {
       const nombre = interaction.options.getString('nombre');
       const pronombre = interaction.options.getString('pronombre');
       await handlePersonalidad(interaction, 'nombre_y_pronombre', nombre, pronombre);
       return;
     }
+
     if (subcommand === 'editar_personalidad') {
       const rasgo = interaction.options.getString('rasgo');
       await handlePersonalidad(interaction, 'editar_bot_personality', rasgo);
       return;
     }
+
     if (subcommand === 'ver_personalidad') {
       await handlePersonalidad(interaction, 'ver');
       return;
@@ -97,7 +131,12 @@ export async function handleAiCommand(interaction) {
 
   } catch (err) {
     console.error(`[aiHandler] Error:`, err);
-    await interaction.followUp({ content: 'Hubo un error al procesar la opción.' }).catch(() => {});
+    const errMsg = { content: 'Hubo un error al procesar la opción.' };
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply(errMsg).catch(() => {});
+    } else {
+      await interaction.reply({ ...errMsg, ephemeral: true }).catch(() => {});
+    }
   }
 }
 

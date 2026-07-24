@@ -1,5 +1,5 @@
 // index.js
-import { Client, GatewayIntentBits, Partials, REST, Routes } from 'discord.js';
+import { Client, GatewayIntentBits, Partials } from 'discord.js';
 import http from 'node:http';
 import config from './config.js';
 import secrets from './secrets.js';
@@ -8,7 +8,6 @@ import { validateAllProviders } from './services/ai/modelValidator.js';
 
 import { getUserMemory, saveUserMemory, getRelevantTopics } from './core/memory/index.js';
 import { getUserMemoryConfig, formatProfileForPrompt } from './core/memory/config.js';
-import { commandDefinitions } from './interactions/commandDefinitions.js';
 import { isOwner, isSubCreator } from './core/permissions.js';
 import { analyzeContext } from './core/contextAnalyzer.js';
 import { detectMood } from './core/moodEngine.js';
@@ -79,13 +78,9 @@ function detectMemoryIntent(content) {
 
 /**
  * Genera pasos de razonamiento dinámicos via Memory Engine (IA).
- * Para claude-style retorna objetos {type:'step'|'think', text}.
- * Para arrows/stars retorna strings simples.
- * @param {string} content
- * @param {'save'|'recall'} mode
- * @param {'arrows'|'stars'|'claude'} bulletStyle
+ * Fallback a lista genérica si el Memory Engine no está disponible.
  */
-async function generateMemoryStepsAI(content, mode, bulletStyle = 'arrows') {
+async function generateMemoryStepsAI(content, mode) {
   const fallbackSave = [
     'Analizando información importante',
     'Extrayendo datos relevantes del usuario',
@@ -101,36 +96,13 @@ async function generateMemoryStepsAI(content, mode, bulletStyle = 'arrows') {
   ];
   if (!isMemoryEngineAvailable()) return mode === 'save' ? fallbackSave : fallbackRecall;
 
-  let prompt;
-  if (bulletStyle === 'claude') {
-    // Claude-style: genera pares PASO/RAZON alternados, hasta 25 pares
-    prompt = mode === 'save'
-      ? `El usuario dijo: "${content.slice(0, 300)}". Genera hasta 25 pares de razonamiento interno de un asistente AI guardando esta info en su memoria. Usa EXACTAMENTE este formato alternando lineas:\nPASO: [acción en gerundio, máx 8 palabras]\nRAZON: [pensamiento interno: qué hace, qué encuentra o decide, 1-2 oraciones naturales en primera persona]\nRepite el patron PASO/RAZON hasta completar el proceso. Empieza directamente con PASO: sin introducción.`
-      : `El usuario dijo: "${content.slice(0, 300)}". Genera hasta 25 pares de razonamiento interno de un asistente AI recuperando info de su memoria. Usa EXACTAMENTE este formato:\nPASO: [acción en gerundio, máx 8 palabras]\nRAZON: [pensamiento interno: qué busca, encuentra o concluye, 1-2 oraciones naturales en primera persona]\nRepite el patron PASO/RAZON. Empieza con PASO:.`;
-  } else {
-    // Arrows/stars: pasos ULTRACORTOS en gerundio
-    prompt = mode === 'save'
-      ? `El usuario dijo: "${content.slice(0, 200)}". Genera hasta 10 pasos ULTRACORTOS (máximo 4 palabras por paso, en gerundio tipo "Analizando contexto", "Extrayendo preferencias") de lo que un asistente haría para guardar esta información en su memoria. Solo los pasos, uno por línea, sin viñetas ni números.`
-      : `El usuario dijo: "${content.slice(0, 200)}". Genera hasta 10 pasos ULTRACORTOS (máximo 4 palabras por paso, en gerundio tipo "Buscando referencias", "Consultando historial") de lo que un asistente haría para recuperar información de su memoria. Solo los pasos, uno por línea, sin viñetas ni números.`;
-  }
+  const prompt = mode === 'save'
+    ? `El usuario dijo: "${content.slice(0, 200)}". Genera de 3 a 5 pasos muy breves de lo que un asistente haría para guardar esa información en su memoria. Solo los pasos, uno por línea, sin viñetas ni números.`
+    : `El usuario dijo: "${content.slice(0, 200)}". Genera de 4 a 6 pasos breves de lo que un asistente haría para recuperar información relevante de su memoria. Solo los pasos, uno por línea, sin viñetas ni números.`;
 
   try {
-    const res = await askMemoryEngine('topic', [{ role: 'user', content: prompt }], 0.4);
-
-    if (bulletStyle === 'claude') {
-      const lines = res.split('\n').map(s => s.trim()).filter(s => s.length > 2);
-      const parsed = [];
-      for (const line of lines) {
-        if (/^PASO:\s*/i.test(line)) {
-          parsed.push({ type: 'step', text: line.replace(/^PASO:\s*/i, '').slice(0, 150) });
-        } else if (/^RAZ[OÓ]N:\s*/i.test(line)) {
-          parsed.push({ type: 'think', text: line.replace(/^RAZ[OÓ]N:\s*/i, '').slice(0, 400) });
-        }
-      }
-      return parsed.length >= 2 ? parsed : fallbackSave.map(s => ({ type: 'step', text: s }));
-    }
-
-    const steps = res.split('\n').map(s => s.trim().replace(/^[-*•\d\.\s]+/, '').slice(0, 200)).filter(s => s.length > 4).slice(0, 12);
+    const res = await askMemoryEngine('topic', [{ role: 'user', content: prompt }], 0.2);
+    const steps = res.split('\n').map(s => s.trim().replace(/^[-*•\d\.\s]+/, '').slice(0, 90)).filter(s => s.length > 4).slice(0, 20);
     return steps.length >= 2 ? steps : (mode === 'save' ? fallbackSave : fallbackRecall);
   } catch {
     return mode === 'save' ? fallbackSave : fallbackRecall;
@@ -175,9 +147,9 @@ function memoryUiTiming(content, mode) {
   const size = String(content || '').length;
   const largeBoost = clamp(Math.floor(size / 900), 0, 8);
   return {
-    introMs: mode === 'save' ? 3000 + largeBoost * 600 : 2500,
-    stepMs: mode === 'save' ? 2800 + largeBoost * 400 : 2500,
-    intervalMs: 2000,
+    introMs: mode === 'save' ? 1800 + largeBoost * 450 : 1400,
+    stepMs: mode === 'save' ? 1200 + largeBoost * 180 : 950,
+    intervalMs: 1600,
   };
 }
 
@@ -201,34 +173,21 @@ function computeExtraThinkingDelay({ baseMs, hasWebContext, intent, memoryIntent
   return clamp(baseMs + Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs, minMs, maxMs);
 }
 
-async function runExplicitMemoryUi(message, content, mode, details = '', thinkingState = null, verboseSteps = true, forceClaude = false) {
+async function runExplicitMemoryUi(message, content, mode, details = '', thinkingState = null) {
   let memoryMsg = null;
   let interval = null;
+  let phaseInterval = null;
   const phaseLabel = mode === 'save' ? 'Guardando memoria' : 'Recuperando memoria';
   const phaseEmoji = mode === 'save' ? EMOJIS.save : EMOJIS.recall;
   const finalLabel = mode === 'save' ? 'Memoria actualizada' : 'Memoria recuperada';
   const timing = memoryUiTiming(content, mode);
 
-  // Si el admin desactivó los pasos verbosos, usamos el modo compacto (solo header + done)
-  if (!verboseSteps) {
-    try {
-      memoryMsg = await message.channel.send(`-# ${EMOJIS.memory} *Managing memory...*`);
-      await sleep(2200);
-      await memoryMsg.edit(`-# ${EMOJIS.done} *${finalLabel}*`).catch(() => null);
-      setTimeout(async () => {
-        await memoryMsg.delete().catch(() => null);
-      }, 8000);
-    } catch { /* silencioso */ }
-    return;
-  }
-
-  // Elegir estilo de viñeta: 50% flechas (↳), 50% estrellitas (✧).
-  // El modo Claude (❥) SOLO se activa si el usuario es admin/owner y lo pidió explícitamente.
-  const roll = Math.random();
-  const bulletStyle = forceClaude ? 'claude' : (roll < 0.50 ? 'arrows' : 'stars');
-  const bullet = bulletStyle === 'arrows' ? '↳' : bulletStyle === 'stars' ? '✧' : '❥';
-
   try {
+    await updateThinkingStatus(thinkingState, {
+      emoji: mode === 'save' ? EMOJIS.save : EMOJIS.recall,
+      label: mode === 'save' ? 'Guardando memoria' : 'Recuperación',
+    });
+
     memoryMsg = await message.channel.send(`-# ${EMOJIS.memory} *Managing memory*`);
     let dot = 0;
     interval = setInterval(() => {
@@ -240,45 +199,28 @@ async function runExplicitMemoryUi(message, content, mode, details = '', thinkin
     clearInterval(interval);
 
     let phaseDot = 0;
-    const phaseInterval = setInterval(() => {
+    phaseInterval = setInterval(() => {
       phaseDot = (phaseDot % 3) + 1;
       memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory.*\n-# ${phaseEmoji} *${phaseLabel}${'.'.repeat(phaseDot)}*`).catch(() => null);
     }, timing.intervalMs);
 
-    const steps = await generateMemoryStepsAI(content, mode, bulletStyle);
+    const steps = await generateMemoryStepsAI(content, mode);
     clearInterval(phaseInterval);
 
     let stepsText = '';
     if (details) {
-      stepsText += `\n-# ${EMOJIS.save} Contenido: ${details}`;
+      stepsText += `\n-# • Contenido: ${details}`;
     }
-
     for (const step of steps) {
-      // Claude-style: {type:'step'} = ❥ label, {type:'think'} = razonamiento sin prefijo
-      if (typeof step === 'object') {
-        if (step.type === 'think') {
-          stepsText += `\n-# ${step.text}`;
-        } else {
-          stepsText += `\n-# ${bullet} ${step.text}`;
-        }
-      } else {
-        stepsText += `\n-# ${bullet} ${step}`;
-      }
+      stepsText += `\n-# • ${step}`;
       await memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory.*\n-# ${phaseEmoji} *${phaseLabel}.*${stepsText}`).catch(() => null);
-      // Claude-style se tarda más entre pasos para que se sienta como razonamiento real
-      const delay = bulletStyle === 'claude' ? timing.stepMs + 800 : timing.stepMs;
-      await sleep(delay);
+      await sleep(timing.stepMs);
     }
 
     await memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory.*\n-# ${phaseEmoji} *${phaseLabel}.*${stepsText}\n-# ${EMOJIS.done} *${finalLabel}*`).catch(() => null);
-    
-    // Auto-compact after 2 minutes
-    setTimeout(async () => {
-      await memoryMsg.edit(`-# ${EMOJIS.done} *${finalLabel}*`).catch(() => null);
-    }, 120000);
-
   } catch (err) {
     if (interval) clearInterval(interval);
+    if (phaseInterval) clearInterval(phaseInterval);
     console.warn('[memory-ui] Error en UI de memoria explícita:', err.message);
     if (memoryMsg) await memoryMsg.edit(`-# ${EMOJIS.error} *Error al procesar la memoria.*`).catch(() => null);
   }
@@ -391,19 +333,6 @@ client.once('ready', async () => {
     }
   });
   startConfigRefresh(5);
-
-  // Auto-deploy de comandos globales al arrancar para que Discord siempre tenga
-  // la lista actualizada (esto borra automaticamente comandos viejos como /ia).
-  try {
-    const _rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-    const clientId = process.env.DISCORD_CLIENT_ID;
-    if (clientId) {
-      await _rest.put(Routes.applicationCommands(clientId), { body: commandDefinitions });
-      console.log(`[discord] Comandos globales sincronizados (${commandDefinitions.length} comandos).`);
-    }
-  } catch (err) {
-    console.warn('[discord] No se pudieron sincronizar comandos globales:', err.message);
-  }
   config.updateBotStatus(client, lastAIResponse);
   setInterval(() => config.updateBotStatus(client, lastAIResponse), 30000);
 
@@ -564,18 +493,17 @@ async function runAutoModeration(message) {
     const { EmbedBuilder } = await import('discord.js');
     const formatEmbed = (actionType, reason, pts, authorId, rule) => {
       const levels = [
-        { threshold: 100, label: 'Baneo permanente', color: 0xED4245 },
-        { threshold: 70,  label: 'Expulsión',         color: 0xE67E22 },
-        { threshold: 40,  label: 'Silencio temporal', color: 0xF1C40F },
-        { threshold: 20,  label: 'Advertencia',       color: 0x3498DB },
-        { threshold: 0,   label: 'Aviso Menor',       color: 0x95A5A6 },
+        { threshold: 100, label: 'Baneo permanente', color: 0xFF0000 },
+        { threshold: 70,  label: 'Expulsión',         color: 0xFF5500 },
+        { threshold: 40,  label: 'Silencio temporal', color: 0xFFAA00 },
+        { threshold: 20,  label: 'Advertencia',       color: 0xFFFF00 },
+        { threshold: 0,   label: 'Aviso Menor',       color: 0xAAAAAA },
       ];
       
       const currentLevel = levels.find(l => pts >= l.threshold) || levels[4];
       const nextLevel = levels.slice().reverse().find(l => pts < l.threshold);
       
-      let title = '⚠️ Sistema de Auto-Moderación';
-      if (actionType === 'WARN') title = '⚠️ Advertencia de Moderación';
+      let title = '⚠️ Advertencia de Moderación';
       if (actionType === 'MUTE') title = '🔇 Silencio Temporal Aplicado';
       if (actionType === 'KICK') title = '👢 Expulsión Aplicada';
       if (actionType === 'BAN') title = '🔨 Baneo Permanente Aplicado';
@@ -583,20 +511,14 @@ async function runAutoModeration(message) {
       const embed = new EmbedBuilder()
         .setTitle(title)
         .setColor(currentLevel.color)
-        .setDescription(`Se ha detectado una infracción a las normas de convivencia del servidor.`)
-        .addFields(
-          { name: '👤 Usuario', value: `<@${authorId}>`, inline: true },
-          { name: '📜 Regla Violada', value: `\`${rule}\``, inline: true },
-          { name: '📊 Acumulado', value: `\`${pts} / 100 pts\``, inline: true },
-          { name: '💬 Motivo / Detalle', value: reason || 'Comportamiento no permitido en el chat.' }
-        );
+        .setDescription(`El sistema automatizado ha detectado una infracción al reglamento.\n\n**Usuario:** <@${authorId}>\n**Infracción:** \`${rule}\`\n**Motivo Detallado:** ${reason}`)
+        .addFields({ name: 'Puntos de Infracción', value: `\`${pts}/100\``, inline: true });
         
       if (nextLevel) {
-        embed.addFields({ name: '🚨 Próxima Sanción', value: `**${nextLevel.label}** al alcanzar **${nextLevel.threshold} pts**`, inline: false });
+        embed.addFields({ name: 'Próximo Umbral', value: `${nextLevel.label} a los ${nextLevel.threshold} pts`, inline: true });
       }
 
-      embed.setFooter({ text: 'Novarito Moderación • Expira 20 pts cada 30 días sin faltas' })
-        .setTimestamp();
+      embed.setFooter({ text: 'Los puntos expiran 20 pts por cada 30 días sin infracciones. Sistema de IA.' });
       return embed;
     };
 
@@ -708,29 +630,14 @@ client.on('messageCreate', async (message) => {
       await setFlag(guildId, 'swearing', true);
       await setFlag(guildId, 'factsAutoplay', true);
     }
-
-    // Control de pasos de memoria por admin
-    const rawContent = message.content.toLowerCase();
-    if (/no (muestres|pongas|enseñes|saques|hagas) (los )?pasos|oculta (los )?pasos|sin pasos|pasos (de memoria )?desactivados?|quita (los )?pasos/i.test(rawContent)) {
-      await setFlag(guildId, 'verboseMemorySteps', false);
-    } else if (/(muestra|pon|enseña|activa|regresa|vuelve con) (los )?pasos|pasos (de memoria )?activados?|con pasos/i.test(rawContent)) {
-      await setFlag(guildId, 'verboseMemorySteps', true);
-    }
   }
 
   const flags = getFlags(guildId);
 
-  // Defensa de creators: si alguien habla negativamente de Lara o Theo
-  // (sin mencionar al bot), el bot puede intervenir para defender
-  const PROTECTED_NAMES_RE = /\b(lara|le0[_\s]?lara|theo|theogr|gio|lag|larita)\b/i;
-  const NEGATIVE_SENTIMENT_RE = /\b(odi[ao]|maldita|culpa|idiota|tonta|basura|pendet|inutil|inútil|no sirve|pésima|nefasta|estup|shut up|calla|callat|peor|porqu[eé] no|mentir|minti|feo|horrible|horrible)\b/i;
-  const isDefenseNeeded = !isMentioned && !isReplyToBot && !isDM && !flags.forceTalk &&
-    PROTECTED_NAMES_RE.test(message.content) && NEGATIVE_SENTIMENT_RE.test(message.content);
-
   // ambientMode/forceTalk: el bot puede responder sin que lo mencionen.
   // forceTalk responde a TODO; ambientMode solo mete comentarios random
   // via el watcher de inactividad ya existente (no cambia este flujo).
-  const shouldRespond = isMentioned || isReplyToBot || isDM || flags.forceTalk || isDefenseNeeded;
+  const shouldRespond = isMentioned || isReplyToBot || isDM || flags.forceTalk;
   if (!shouldRespond) return;
   console.log(`[msg] shouldRespond=true mentioned=${isMentioned} reply=${isReplyToBot} dm=${isDM} forceTalk=${flags.forceTalk}`);
 
@@ -927,40 +834,20 @@ client.on('messageCreate', async (message) => {
           memory.facts.push(fact);
         }
       }
-      // Enriquecer con identidad del usuario actual: ID, nombre y contexto del servidor
-      const identityTag = `[ID:${message.author.id}] ${message.author.displayName || message.author.username} (servidor: ${guildId || 'DM'}, canal: ${channelId})`;
-      if (!memory.facts.some(f => f.includes(`[ID:${message.author.id}]`))) {
-        memory.facts.push(`Identidad en este servidor: ${identityTag}`);
-      }
       await saveIdentityFactsMentionedInMemoryRequest(finalContent).catch(err => {
         console.warn('[identity] No se pudieron guardar hechos por ID:', err.message);
       });
       const details = explicitFacts.join(' | ').slice(0, 260);
-      
-      // Artificial thinking delay for explicit memory
-      const extraThinkingDelay = computeExtraThinkingDelay({ baseMs: 1600, hasWebContext: false, intent: 'chat', memoryIntent: { isExplicit: true }, contentLength: finalContent.length });
-      if (extraThinkingDelay > 1600) await sleep(extraThinkingDelay);
-
-      // Detectar si el usuario pidió ver los pasos explícitamente (SOLO para Owner, SubCreator o Admins)
-      const isUserAdminOrHigher = isOwner(message.author) || isSubCreator(message.author) || isAdminOrHigher(message.author) || message.member?.permissions?.has?.('Administrator');
-      const askedForSteps = isUserAdminOrHigher && /muéstrame|muestrame|enseñame|enséñame|los pasos|con pasos|paso a paso|detallado|explicame|explícame/i.test(finalContent);
-
       await Promise.all([
         saveUserMemory(message.author.id, guildId, userConfig.mode, memory, channelId),
-        runExplicitMemoryUi(message, finalContent, 'save', details, thinkingState, flags.verboseMemorySteps, askedForSteps),
+        runExplicitMemoryUi(message, finalContent, 'save', details, thinkingState),
       ]);
     } else if (memoryIntent.isRecall && userConfig.mode !== 'off') {
       const details = memory.isGlobal ? 'Buscando en memoria global de servidores y canales' : 'Buscando en memoria local de este servidor';
-      
-      const extraThinkingDelay = computeExtraThinkingDelay({ baseMs: 1600, hasWebContext: false, intent: 'chat', memoryIntent: { isExplicit: true }, contentLength: finalContent.length });
-      if (extraThinkingDelay > 1600) await sleep(extraThinkingDelay);
-
-      // Detectar si el usuario pidió ver los pasos explícitamente (SOLO para Owner, SubCreator o Admins)
-      const isUserAdminOrHigher = isOwner(message.author) || isSubCreator(message.author) || isAdminOrHigher(message.author) || message.member?.permissions?.has?.('Administrator');
-      const askedForSteps = isUserAdminOrHigher && /muéstrame|muestrame|enseñame|enséñame|los pasos|con pasos|paso a paso|detallado|explicame|explícame/i.test(finalContent);
-
-      await runExplicitMemoryUi(message, finalContent, 'recall', details, thinkingState, flags.verboseMemorySteps, askedForSteps);
+      await runExplicitMemoryUi(message, finalContent, 'recall', details, thinkingState);
     }
+
+    await updateThinkingStatus(thinkingState, { emoji: EMOJIS.thinking, label: 'Pensando' });
 
     // 2. Contexto y mood
     const context = analyzeContext(memory.messages, message, client.user.id);
@@ -994,13 +881,7 @@ client.on('messageCreate', async (message) => {
     // 5. Llamada a la IA
     const userPoints = guildId ? await getUserPoints(guildId, message.author.id).catch(() => 0) : 0;
     const intent = (message.attachments.size > 0 || urlText) ? 'document' : 'chat';
-    
-    let mediaSummary = '';
-    if (memory.media && memory.media.length > 0) {
-      mediaSummary = `ARCHIVOS Y ENLACES EN MEMORIA:\nEl usuario te ha compartido estos archivos previamente:\n` + memory.media.map(m => `- [${m.type}] ${m.name || 'Archivo'}: ${m.url}`).join('\n') + `\n⚠️ CRÍTICO: Si el usuario te pide que le pases, envíes o recuerdes algún archivo (PDF, imagen, video, etc) o enlace que tengas guardado, DEBES enviarle directamente la URL correspondiente en tu respuesta para que Discord lo muestre.`;
-    }
-    
-    const conversationSummary = [summaryForAI, summary, mediaSummary].filter(Boolean).join('\n\n');
+    const conversationSummary = [summaryForAI, summary].filter(Boolean).join('\n\n');
     const response = await askAI(llmHistory, recentTokens, {
       moodInfo,
       intent,
@@ -1029,13 +910,23 @@ client.on('messageCreate', async (message) => {
     });
 
     // La respuesta no se envia hasta que el guardado de memoria del turno termina.
-    let triggerGhostMemory = false;
     try {
       const result = await saveUserMemory(message.author.id, guildId, userConfig.mode, memory, channelId);
 
       // Memoria automática compacta: solo aparece si hubo compactación real y nadie la pidió.
       if (result?.summarized && !memoryIntent.isExplicit) {
-        triggerGhostMemory = true;
+        let silentMsg = null;
+        try {
+          silentMsg = await message.channel.send(`-# ${EMOJIS.memory} *Managing memory*`);
+          let sDot = 0;
+          const sInt = setInterval(() => {
+            sDot = (sDot % 3) + 1;
+            silentMsg.edit(`-# ${EMOJIS.memory} *Managing memory${'.'.repeat(sDot)}*`).catch(() => null);
+          }, 700);
+          await sleep(2500);
+          clearInterval(sInt);
+          await silentMsg.edit(`-# ${EMOJIS.done} *Memoria actualizada*`).catch(() => null);
+        } catch { /* silencioso */ }
       }
     } catch (err) {
       console.error('[memory] Error guardando memoria:', err.message);
@@ -1091,32 +982,6 @@ client.on('messageCreate', async (message) => {
         await new Promise(r => setTimeout(r, delayBetweenParts()));
         await message.channel.sendTyping().catch(() => {});
       }
-    }
-
-    // Ghost effect for implicit memory
-    if (triggerGhostMemory && thinkingMsg && firstMessageEdited) {
-      (async () => {
-        try {
-          // Extraemos el prefijo de la última chunk (sin el "Pensó por")
-          const lastChunk = parts[parts.length - 1].match(/[\s\S]{1,1900}/g)?.pop() || '...';
-          const baseText = `${pingPrefix}${lastChunk}`;
-          
-          await sleep(1500);
-          // 1. Muta a Managing memory
-          await thinkingMsg.edit(`${baseText}\n-# ${EMOJIS.memory} *Managing memory...*`).catch(()=>null);
-          await sleep(2000);
-          // 2. Muta a paso compacto
-          await thinkingMsg.edit(`${baseText}\n-# ↳ guardando historial...`).catch(()=>null);
-          await sleep(3500);
-          // 3. Muta a completado
-          await thinkingMsg.edit(`${baseText}\n-# ${EMOJIS.done} *Memoria actualizada*`).catch(()=>null);
-          
-          // 4. Espera 1 minuto
-          await sleep(60000);
-          // 5. Regresa a Pensó por original
-          await thinkingMsg.edit(`${baseText}\n-# ${EMOJIS.thinking} *Pensó por ${thinkingTime}*`).catch(()=>null);
-        } catch(e) {}
-      })();
     }
 
     config.updateBotStatus(client, lastAIResponse);

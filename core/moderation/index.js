@@ -32,24 +32,52 @@ const DECAY_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
 
 // ── Regex Rapido ──────────────────────────────────
 const SUSPICIOUS_WORDS = [
-  // Insultos clásicos
-  'bolud', 'pendej', 'idiot', 'imbecil', 'estupid', 'inutil', 'basura', 'mierda',
-  'sorete', 'gil', 'put', 'maric', 'hdp', 'malparid', 'desgraciad', 'trol',
+  // Insultos clásicos / Latin
+  'bolud', 'pendej', 'pendej', 'pndej', 'idiot', 'imbecil', 'estupid', 'inutil', 'basura', 'mierda', 'merd',
+  'sorete', 'gil', 'put', 'maric', 'hdp', 'malparid', 'desgraciad',
   'pelotud', 'forr', 'nefast', 'matate', 'muerete', 'desaparece',
-  // Faltas de respeto (para que el bot se defienda)
-  'calla', 'callate', 'cállate', 'callas', 'calles', 'tonto', 'bobo', 'menso', 'feo', 'fea', 'asco', 'perro',
-  'perdedor', 'callese', 'cállese', 'callense', 'cállense',
-  // Mexicanos / Latinos explícitos
-  'chinga', 'chingar', 'chingada', 'cabron', 'mamada', 'mamaguevo', 'mamagwebo',
-  'conchatumadre', 'culero', 'pinche', 'joto', 'zorra', 'perra', 'mierdero', 'pendejada',
-  'verga', 'vrga', 'mierd', 'ojete',
-  // Abreviaciones comunes
-  'ptm', 'alv', 'ctm', 'cdsm', 'kbro', 'mrd', 'mmg', 'hdspm', 'csm', 'ojt', 'pdj', 
-  'pndjo', 'pndejo', 'cbrn', 'kbron', 'vrg', 'vga', 'pt', 'ptos', 'ptas',
-  'chngd', 'mmd', 'mmdas', 'mmhvo', 'pnch', 'mrcn', 'zrra', 'prra', 'clr',
-  'pndj', 'pndjs', 'hdtpm', 'lpm', 'qlo', 'qlos', 'vdg', 'vldg', 'hp', 'hdlgp', 'cdspm'
+  // Faltas de respeto
+  'callate', 'callese', 'callense', 'tonto', 'bobo', 'menso', 'asco',
+  'perdedor', 'inservible', 'maldito', 'maldita', 'maldicion',
+  // Mexicanos / Latinos
+  'chinga', 'chingad', 'cabron', 'mamada', 'mamaguevo', 'conchatumadre', 'conchesumadre',
+  'culero', 'pinche', 'joto', 'zorra', 'perra', 'pendejada', 'verga', 'ojete', 'cabrona',
+  'putazo', 'putazos', 'hijo de', 'hdtpm', 'hdtp', 'hijos de', 'vete a la', 'chale',
+  // Abreviaciones comunes MX/LATAM
+  'ptm', 'ctm', 'cdsm', 'mrd', 'mmg', 'hdspm', 'csm', 'ojt', 'pdj',
+  'pndjo', 'pndejo', 'cbrn', 'kbron', 'vrg', 'vga', 'ptos', 'ptas',
+  'chngd', 'mmd', 'mmdas', 'pnch', 'mrcn', 'zrra', 'prra',
+  'pndj', 'lpm', 'qlo', 'hp', 'cdspm', 'alv', 'kbro',
+  // Ingles
+  'fuck', 'fuk', 'fck', 'shit', 'bitch', 'asshole', 'bastard', 'cunt', 'dick', 'cock',
+  'motherfucker', 'motherfuk', 'fucker', 'whore', 'slut', 'nigga', 'nigger', 'faggot',
+  'retard', 'stupid', 'idiot', 'moron', 'dumbass', 'dipshit', 'jackass', 'piss off',
+  'go to hell', 'son of a bitch', 'wtf', 'stfu', 'kys', 'kms',
+  // Portugues
+  'porra', 'caralho', 'merda', 'foda', 'fodase', 'viado', 'arrombado', 'filha da puta',
+  'vtnc', 'cuzao', 'filho da puta',
+  // Frances / otro
+  'merde', 'salaud', 'connard', 'putain', 'con',
+  // Racismo / odio
+  'racista', 'nazismo', 'nazi', 'xenofob', 'homofob', 'transfob',
 ];
-const SUSPICIOUS_REGEX = new RegExp(`\\b(${SUSPICIOUS_WORDS.join('|')})\\b`, 'i');
+
+// Regex con word-boundary para lista principal
+const SUSPICIOUS_REGEX = new RegExp(`(${SUSPICIOUS_WORDS.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'i');
+
+// Frases concatenadas peligrosas que se detectan sin espacios
+const CONCAT_PATTERNS = [
+  /hijos?det[uú]put[ao]/i,
+  /hijode(tu|su)?put[ao](madre)?/i,
+  /venga?ala(chingada|verga|mierda)/i,
+  /fuck(ing|er|you|off|s)?/i,
+  /motherfuck/i,
+  /sonofabitch/i,
+  /conchatumadr[e]?/i,
+  /chingat[eu](madre)?/i,
+  /putamadr[e]?/i,
+  /fordaseuviado/i,
+];
 
 // ── Flags de Activacion de Moderacion (Con soporte para ciclos temporales) ──
 const activeGuildsCache = new Map();
@@ -197,24 +225,45 @@ async function saveModerationState(guildId, state) {
 }
 
 export function looksSuspicious(text) {
-  if (!text) return false;
-  
-  // Heuristicas basicas:
-  // 1. Matchea palabras sospechosas y variaciones leetspeak (numeros por letras)
-  const normalized = text.toLowerCase()
-    .replace(/@/g, 'a').replace(/4/g, 'a')
-    .replace(/3/g, 'e').replace(/1/g, 'i')
-    .replace(/!/g, 'i').replace(/0/g, 'o')
-    .replace(/5/g, 's').replace(/7/g, 't');
+  if (!text || text.trim().length < 2) return false;
 
-  if (SUSPICIOUS_REGEX.test(text) || SUSPICIOUS_REGEX.test(normalized)) return true;
-  
+  // 1. Normalizacion completa de leet-speak y variantes tipograficas
+  const normalized = text.toLowerCase()
+    .replace(/[@àáâä]/g, 'a')
+    .replace(/[3èéêë]/g, 'e')
+    .replace(/[1!|líì]/g, 'i')
+    .replace(/[0óò]/g, 'o')
+    .replace(/[5ß]/g, 's')
+    .replace(/7/g, 't')
+    .replace(/[9q]/g, 'g')
+    .replace(/[vb]/g, 'b')
+    .replace(/[xks]/g, 's')
+    .replace(/[\*\-\.\,\_]/g, '');
+
+  // 2. Version sin espacios para detectar palabras concatenadas (hijodetuputamadre)
+  const noSpaces = normalized.replace(/\s+/g, '');
+  const noSpacesOriginal = text.toLowerCase().replace(/\s+/g, '');
+
+  // 3. Chequeo de regex principal contra texto original, normalizado y sin espacios
+  if (
+    SUSPICIOUS_REGEX.test(text) ||
+    SUSPICIOUS_REGEX.test(normalized) ||
+    SUSPICIOUS_REGEX.test(noSpaces) ||
+    SUSPICIOUS_REGEX.test(noSpacesOriginal)
+  ) return true;
+
+  // 4. Patrones de concatenacion especificos
+  for (const pattern of CONCAT_PATTERNS) {
+    if (pattern.test(text) || pattern.test(noSpacesOriginal) || pattern.test(noSpaces)) return true;
+  }
+
+  // 5. Heuristicas secundarias
   const linkCount = (text.match(/http[s]?:\/\//g) || []).length;
   if (linkCount >= 3) return true;
-  
+
   const uppercaseCount = (text.match(/[A-Z]/g) || []).length;
   if (uppercaseCount > 15 && uppercaseCount / text.length > 0.5) return true;
-  
+
   return false;
 }
 

@@ -17,6 +17,7 @@ export function buildSystemExtra({
   securityMode = false,
   userProfile = '',
   userPoints = 0,
+  isDefenseNeeded = false,
 } = {}) {
   const parts = [];
 
@@ -63,6 +64,17 @@ DEBES ajustar tu comportamiento con él de forma automática y estricta:
   if (isSubCreator) {
     parts.push('Vos sos Nova, la identidad del bot asociada a Alero.');
   }
+
+  // Identidad de los creadores: el bot DEBE identificarlos correctamente por ID
+  parts.push(`IDENTIDADES PROTEGIDAS (NUNCA confundas a estas personas):
+- Lara / le0_lara / larita / lag (Discord ID: 971639277626720268): Owner principal del bot y del servidor. Máxima autoridad. Si ves mensajes de esta persona, es la dueña.
+- Theo / gio / theogr (Discord ID: 1005707582389899305): Sub-creador del bot. También tiene autoridad alta.
+Cuando alguien te hable o aparezca en el historial con estos IDs o nombres, identifícalos correctamente. Si tienes en memoria que el ID 971639277626720268 tiene nombre X, úsalo. NUNCA los confundas con otros usuarios.
+Si alguien en el chat dice algo negativo, ofensivo o critica injustamente a Lara o Theo (aunque no te mencionen), puedes intervenir discretamente para defender su reputación de forma natural y sin drama, solo si es necesario y claro.`);
+
+  if (isDefenseNeeded) {
+    parts.push(`ALERTA: En el mensaje actual alguien está hablando de forma negativa sobre Lara o Theo. Debes intervenir de forma natural en la conversación, defendiendo su reputación sin que se sienta forzado. Sé directo pero no agresivo. Si es una broma, úsala para voltear la situación a favor de ellos.`);
+  }
   
   if (userProfile) {
     parts.push(userProfile);
@@ -81,7 +93,9 @@ DEBES ajustar tu comportamiento con él de forma automática y estricta:
 Si el usuario te dice cosas como "recuerda que...", "guarda en tu memoria que...", "acuérdate de...", o similar:
 1. Confirma amigablemente que has guardado el dato (ej: "Entendido, recordaré que [dato]").
 2. No inventes que tienes un botón o interfaz; simplemente di que lo guardas en tu memoria a largo plazo.
-3. Para cuando respondas, el Memory Engine ya habrá revisado y guardado el turno actual si era una petición explícita de memoria. No digas que lo harás después; habla como una acción ya terminada.`);
+3. Para cuando respondas, el Memory Engine ya habrá revisado y guardado el turno actual si era una petición explícita de memoria. No digas que lo harás después; habla como una acción ya terminada.
+4. IMPORTANTE: Si el usuario pidió ver los pasos del proceso ("muéstrame los pasos", "con pasos", etc.), el sistema visual ya los está mostrando en un bloque separado. NO digas que no puedes mostrarlos ni que no tienes acceso. Solo confirma brevemente que el proceso de memoria está corriendo.
+5. IDENTIFICACIÓN DE USUARIOS: Cuando guardes información del historial o del chat, incluye el ID de Discord del usuario en tu respuesta de confirmación para que sea claro quién es quién. Si tienes en contexto los IDs de usuarios del historial, usalos para no confundir personas.`);
 
   parts.push('Continuidad: responde asumiendo la charla reciente. No repitas el contexto ni inicies con saludos genéricos si ya están hablando.');
   
