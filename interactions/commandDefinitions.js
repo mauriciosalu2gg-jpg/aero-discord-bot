@@ -9,7 +9,6 @@ export const commandDefinitions = [
       .setDescription('Acción o módulo de IA a ejecutar')
       .setRequired(true)
       .addChoices(
-        { name: 'Chat (Habla con Novarito)', value: 'chat' },
         { name: 'Imaginar (Generar imagen)', value: 'imaginar' },
         { name: 'Estado (Diagnóstico de IA)', value: 'estado' },
         { name: 'Proveedor (Cambiar IA activa)', value: 'proveedor' },
