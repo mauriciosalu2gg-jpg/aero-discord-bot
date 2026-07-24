@@ -938,6 +938,25 @@ client.on('messageCreate', async (message) => {
     thinkingInterval = thinkingState.interval;
     thinkingStart = thinkingState.start;
 
+    // Si es una petición explícita de memoria, iniciar UI INMEDIATAMENTE en paralelo
+    let memoryUiPromise = null;
+    if (memoryIntent.isSave || memoryIntent.isRecall || memoryIntent.isExplicit) {
+      const isUserAdminOrHigher = isOwner(message.author) || isSubCreator(message.author) || isAdminOrHigher(message.author) || message.member?.permissions?.has?.('Administrator');
+      let effectiveVerboseSteps = true;
+      let askedForSteps = false;
+
+      if (/compacta(damente|do)?|sin (mostrar )?pasos|no (muestres|pongas) (los )?pasos|oculta (los )?pasos/i.test(content)) {
+        effectiveVerboseSteps = false;
+      }
+      if (isUserAdminOrHigher && /muéstrame|muestrame|enseñame|enséñame|dime|dinos|los pasos|pasos|con pasos|paso a paso|detallado|explicame|explícame|explicito|explícito/i.test(content)) {
+        askedForSteps = true;
+        effectiveVerboseSteps = true;
+      }
+
+      const modeType = memoryIntent.isRecall ? 'recall' : 'save';
+      memoryUiPromise = runExplicitMemoryUi(message, content, modeType, '', thinkingState, effectiveVerboseSteps, askedForSteps).catch(() => null);
+    }
+
     const memory = await getUserMemory(message.author.id, guildId, userConfig.mode, channelId);
     
     // Procesar archivos adjuntos si los hay y extraer enlaces
@@ -1074,47 +1093,13 @@ client.on('messageCreate', async (message) => {
       const extraThinkingDelay = computeExtraThinkingDelay({ baseMs: 1600, hasWebContext: false, intent: 'chat', memoryIntent: { isExplicit: true }, contentLength: finalContent.length });
       if (extraThinkingDelay > 1600) await sleep(extraThinkingDelay);
 
-      // Por defecto cualquier petición explícita de memoria muestra sus pasos 50/50
-      let effectiveVerboseSteps = true;
-      let askedForSteps = false;
-
-      // Si se pide explícitamente formato compacto:
-      if (/compacta(damente|do)?|sin (mostrar )?pasos|no (muestres|pongas) (los )?pasos|oculta (los )?pasos/i.test(finalContent)) {
-        effectiveVerboseSteps = false;
+      if (memoryUiPromise) {
+        await memoryUiPromise;
       }
-
-      // Si un admin/owner pide ver los pasos explícitamente (modo Claude ❥)
-      if (isUserAdminOrHigher && /muéstrame|muestrame|enseñame|enséñame|dime|dinos|los pasos|pasos|con pasos|paso a paso|detallado|explicame|explícame|explicito|explícito/i.test(finalContent)) {
-        askedForSteps = true;
-        effectiveVerboseSteps = true;
-      }
-
-      await Promise.all([
-        saveUserMemory(message.author.id, guildId, userConfig.mode, memory, channelId).catch(err => console.warn('[memory-save] Non-fatal error:', err.message)),
-        runExplicitMemoryUi(message, finalContent, 'save', details, thinkingState, effectiveVerboseSteps, askedForSteps),
-      ]);
     } else if (memoryIntent.isRecall && userConfig.mode !== 'off') {
-      const details = memory.isGlobal ? 'Buscando en memoria global de servidores y canales' : 'Buscando en memoria local de este servidor';
-      
-      const extraThinkingDelay = computeExtraThinkingDelay({ baseMs: 1600, hasWebContext: false, intent: 'chat', memoryIntent: { isExplicit: true }, contentLength: finalContent.length });
-      if (extraThinkingDelay > 1600) await sleep(extraThinkingDelay);
-
-      // Por defecto cualquier petición explícita de memoria muestra sus pasos 50/50
-      let effectiveVerboseSteps = true;
-      let askedForSteps = false;
-
-      // Si se pide explícitamente formato compacto:
-      if (/compacta(damente|do)?|sin (mostrar )?pasos|no (muestres|pongas) (los )?pasos|oculta (los )?pasos/i.test(finalContent)) {
-        effectiveVerboseSteps = false;
+      if (memoryUiPromise) {
+        await memoryUiPromise;
       }
-
-      // Si un admin/owner pide ver los pasos explícitamente (modo Claude ❥)
-      if (isUserAdminOrHigher && /muéstrame|muestrame|enseñame|enséñame|dime|dinos|los pasos|pasos|con pasos|paso a paso|detallado|explicame|explícame|explicito|explícito/i.test(finalContent)) {
-        askedForSteps = true;
-        effectiveVerboseSteps = true;
-      }
-
-      await runExplicitMemoryUi(message, finalContent, 'recall', details, thinkingState, effectiveVerboseSteps, askedForSteps);
     }
 
     // 2. Contexto y mood

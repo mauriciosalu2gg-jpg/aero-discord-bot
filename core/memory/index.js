@@ -68,33 +68,37 @@ async function getGlobalConversationMessages(userId, currentChannelId) {
   if (!db || !userId) return [];
 
   try {
-    const conversationsSnap = await db
-      .collection('memoryScopes')
-      .doc('global')
-      .collection('conversations')
-      .get();
+    const fetchPromise = (async () => {
+      const conversationsSnap = await db
+        .collection('memoryScopes')
+        .doc('global')
+        .collection('conversations')
+        .get()
+        .catch(() => null);
 
-    const perChannel = [];
-    for (const channelDoc of conversationsSnap.docs) {
-      const userDoc = await channelDoc.ref.collection('users').doc(userId).get();
-      if (!userDoc.exists) continue;
-      const messages = userDoc.data()?.messages || [];
-      for (const message of messages.slice(-12)) {
-        perChannel.push({
-          ...message,
-          _memoryChannelId: channelDoc.id,
-          _currentChannelBoost: channelDoc.id === (currentChannelId || 'direct') ? 1 : 0,
-        });
-      }
-    }
+      if (!conversationsSnap || conversationsSnap.empty) return [];
 
-    return perChannel
-      .sort((a, b) => {
-        const at = new Date(a.createdAt || 0).getTime();
-        const bt = new Date(b.createdAt || 0).getTime();
-        return at - bt;
-      })
-      .slice(-60);
+      const results = await Promise.all(
+        conversationsSnap.docs.map(async (channelDoc) => {
+          const userDoc = await channelDoc.ref.collection('users').doc(userId).get().catch(() => null);
+          if (!userDoc || !userDoc.exists) return [];
+          const messages = userDoc.data()?.messages || [];
+          return messages.slice(-12).map(message => ({
+            ...message,
+            _memoryChannelId: channelDoc.id,
+            _currentChannelBoost: channelDoc.id === (currentChannelId || 'direct') ? 1 : 0,
+          }));
+        })
+      );
+
+      const perChannel = results.flat();
+      return perChannel
+        .sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime())
+        .slice(-60);
+    })();
+
+    const timeoutPromise = new Promise(resolve => setTimeout(() => resolve([]), 1500));
+    return await Promise.race([fetchPromise, timeoutPromise]);
   } catch (err) {
     console.error('[memory] Error agregando memoria global:', err.message);
     return [];
@@ -387,30 +391,37 @@ export async function getRelevantTopics(userId, query, topN = 5) {
 
 export async function getAllUserServerMemories(userId) {
   if (!db || !userId) return [];
-  const serverMemories = [];
   try {
-    const scopesSnap = await db.collection('memoryScopes').get().catch(() => null);
-    if (scopesSnap && !scopesSnap.empty) {
-      for (const scopeDoc of scopesSnap.docs) {
-        const scopeId = scopeDoc.id;
-        const factsDoc = await scopeDoc.ref.collection('facts').doc(userId).get().catch(() => null);
-        if (factsDoc && factsDoc.exists) {
-          const data = factsDoc.data();
-          if (data.summary || (data.facts && data.facts.length > 0)) {
-            serverMemories.push({
-              serverId: scopeId,
-              summary: data.summary || '',
-              facts: data.facts || [],
-              updatedAt: data.updatedAt || ''
-            });
+    const fetchPromise = (async () => {
+      const scopesSnap = await db.collection('memoryScopes').get().catch(() => null);
+      if (!scopesSnap || scopesSnap.empty) return [];
+      
+      const results = await Promise.all(
+        scopesSnap.docs.map(async (scopeDoc) => {
+          const factsDoc = await scopeDoc.ref.collection('facts').doc(userId).get().catch(() => null);
+          if (factsDoc && factsDoc.exists) {
+            const data = factsDoc.data();
+            if (data.summary || (data.facts && data.facts.length > 0)) {
+              return {
+                serverId: scopeDoc.id,
+                summary: data.summary || '',
+                facts: data.facts || [],
+                updatedAt: data.updatedAt || ''
+              };
+            }
           }
-        }
-      }
-    }
+          return null;
+        })
+      );
+      return results.filter(Boolean);
+    })();
+
+    const timeoutPromise = new Promise(resolve => setTimeout(() => resolve([]), 1500));
+    return await Promise.race([fetchPromise, timeoutPromise]);
   } catch (err) {
     console.error('[memory] Error en getAllUserServerMemories:', err.message);
+    return [];
   }
-  return serverMemories;
 }
 
 export async function resetUserMemory(userId, guildId, mode, channelId) {
