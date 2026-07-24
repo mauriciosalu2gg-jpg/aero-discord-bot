@@ -80,8 +80,11 @@ function detectMemoryIntent(content) {
 /**
  * Genera pasos de razonamiento dinámicos via Memory Engine (IA).
  * Fallback a lista genérica si el Memory Engine no está disponible.
+ * @param {string} content - contenido del mensaje del usuario
+ * @param {'save'|'recall'} mode
+ * @param {'arrows'|'stars'|'claude'} bulletStyle - estilo de viñeta elegido
  */
-async function generateMemoryStepsAI(content, mode) {
+async function generateMemoryStepsAI(content, mode, bulletStyle = 'arrows') {
   const fallbackSave = [
     'Analizando información importante',
     'Extrayendo datos relevantes del usuario',
@@ -97,13 +100,24 @@ async function generateMemoryStepsAI(content, mode) {
   ];
   if (!isMemoryEngineAvailable()) return mode === 'save' ? fallbackSave : fallbackRecall;
 
-  const prompt = mode === 'save'
-    ? `El usuario dijo: "${content.slice(0, 200)}". Genera hasta 10 pasos ULTRACORTOS (máximo 4 palabras por paso, en gerundio tipo "Analizando contexto", "Extrayendo preferencias") de lo que un asistente haría para guardar esta información en su memoria. Solo los pasos, uno por línea, sin viñetas ni números.`
-    : `El usuario dijo: "${content.slice(0, 200)}". Genera hasta 10 pasos ULTRACORTOS (máximo 4 palabras por paso, en gerundio tipo "Buscando referencias", "Consultando historial") de lo que un asistente haría para recuperar información de su memoria. Solo los pasos, uno por línea, sin viñetas ni números.`;
+  let prompt;
+  if (bulletStyle === 'claude') {
+    // Claude-style: pasos con razonamiento corto, hasta 25 pasos, naturales y descriptivos
+    prompt = mode === 'save'
+      ? `El usuario dijo: "${content.slice(0, 300)}". Genera hasta 25 pasos de razonamiento de lo que un asistente AI haría internamente para guardar esta información en su memoria. Cada paso debe ser una oración corta y natural que describa qué está procesando o verificando (como si fuera el pensamiento interno del AI). Ejemplo: "Identificando que el usuario quiere guardar información personal", "Verificando que el dato no contradice información previa". Solo los pasos, uno por línea, sin viñetas ni números.`
+      : `El usuario dijo: "${content.slice(0, 300)}". Genera hasta 25 pasos de razonamiento de lo que un asistente AI haría internamente para recuperar información relevante de su memoria. Cada paso describe qué está buscando, comparando o verificando. Ejemplo: "Buscando en la base de datos de preferencias del usuario", "Cotejando con conversaciones recientes". Solo los pasos, uno por línea, sin viñetas ni números.`;
+  } else {
+    // Arrows/stars: pasos ULTRACORTOS, máximo 4 palabras en gerundio
+    prompt = mode === 'save'
+      ? `El usuario dijo: "${content.slice(0, 200)}". Genera hasta 10 pasos ULTRACORTOS (máximo 4 palabras por paso, en gerundio tipo "Analizando contexto", "Extrayendo preferencias") de lo que un asistente haría para guardar esta información en su memoria. Solo los pasos, uno por línea, sin viñetas ni números.`
+      : `El usuario dijo: "${content.slice(0, 200)}". Genera hasta 10 pasos ULTRACORTOS (máximo 4 palabras por paso, en gerundio tipo "Buscando referencias", "Consultando historial") de lo que un asistente haría para recuperar información de su memoria. Solo los pasos, uno por línea, sin viñetas ni números.`;
+  }
+
+  const maxSteps = bulletStyle === 'claude' ? 25 : 12;
 
   try {
-    const res = await askMemoryEngine('topic', [{ role: 'user', content: prompt }], 0.2);
-    const steps = res.split('\n').map(s => s.trim().replace(/^[-*•\d\.\s]+/, '').slice(0, 150)).filter(s => s.length > 4).slice(0, 12);
+    const res = await askMemoryEngine('topic', [{ role: 'user', content: prompt }], 0.4);
+    const steps = res.split('\n').map(s => s.trim().replace(/^[-*•\d\.\s]+/, '').slice(0, 200)).filter(s => s.length > 4).slice(0, maxSteps);
     return steps.length >= 2 ? steps : (mode === 'save' ? fallbackSave : fallbackRecall);
   } catch {
     return mode === 'save' ? fallbackSave : fallbackRecall;
@@ -174,13 +188,32 @@ function computeExtraThinkingDelay({ baseMs, hasWebContext, intent, memoryIntent
   return clamp(baseMs + Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs, minMs, maxMs);
 }
 
-async function runExplicitMemoryUi(message, content, mode, details = '', thinkingState = null) {
+async function runExplicitMemoryUi(message, content, mode, details = '', thinkingState = null, verboseSteps = true, forceClaude = false) {
   let memoryMsg = null;
   let interval = null;
   const phaseLabel = mode === 'save' ? 'Guardando memoria' : 'Recuperando memoria';
   const phaseEmoji = mode === 'save' ? EMOJIS.save : EMOJIS.recall;
   const finalLabel = mode === 'save' ? 'Memoria actualizada' : 'Memoria recuperada';
   const timing = memoryUiTiming(content, mode);
+
+  // Si el admin desactivó los pasos verbosos, usamos el modo compacto (solo header + done)
+  if (!verboseSteps) {
+    try {
+      memoryMsg = await message.channel.send(`-# ${EMOJIS.memory} *Managing memory...*`);
+      await sleep(2200);
+      await memoryMsg.edit(`-# ${EMOJIS.done} *${finalLabel}*`).catch(() => null);
+      setTimeout(async () => {
+        await memoryMsg.delete().catch(() => null);
+      }, 8000);
+    } catch { /* silencioso */ }
+    return;
+  }
+
+  // Elegir estilo de viñeta: 40% flechas, 25% estrellitas, 35% claude
+  // Si el usuario pidió ver los pasos explicitamente -> siempre claude
+  const roll = Math.random();
+  const bulletStyle = forceClaude ? 'claude' : (roll < 0.40 ? 'arrows' : roll < 0.65 ? 'stars' : 'claude');
+  const bullet = bulletStyle === 'arrows' ? '↳' : bulletStyle === 'stars' ? '✧' : '❥';
 
   try {
     memoryMsg = await message.channel.send(`-# ${EMOJIS.memory} *Managing memory*`);
@@ -199,22 +232,20 @@ async function runExplicitMemoryUi(message, content, mode, details = '', thinkin
       memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory.*\n-# ${phaseEmoji} *${phaseLabel}${'.'.repeat(phaseDot)}*`).catch(() => null);
     }, timing.intervalMs);
 
-    const steps = await generateMemoryStepsAI(content, mode);
+    const steps = await generateMemoryStepsAI(content, mode, bulletStyle);
     clearInterval(phaseInterval);
 
     let stepsText = '';
     if (details) {
-      stepsText += `\n-# ${EMOJIS.save} Contenido: ${details}`; // hojita para detalles
+      stepsText += `\n-# ${EMOJIS.save} Contenido: ${details}`;
     }
-    
-    // 50/50 bullet style
-    const useArrows = Math.random() < 0.5;
-    const bullet = useArrows ? '↳' : '✧';
 
     for (const step of steps) {
       stepsText += `\n-# ${bullet} ${step}`;
       await memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory.*\n-# ${phaseEmoji} *${phaseLabel}.*${stepsText}`).catch(() => null);
-      await sleep(timing.stepMs);
+      // Claude-style se tarda más entre pasos para que se sienta como razonamiento real
+      const delay = bulletStyle === 'claude' ? timing.stepMs + 800 : timing.stepMs;
+      await sleep(delay);
     }
 
     await memoryMsg.edit(`-# ${EMOJIS.memory} *Managing memory.*\n-# ${phaseEmoji} *${phaseLabel}.*${stepsText}\n-# ${EMOJIS.done} *${finalLabel}*`).catch(() => null);
@@ -648,6 +679,14 @@ client.on('messageCreate', async (message) => {
       await setFlag(guildId, 'swearing', true);
       await setFlag(guildId, 'factsAutoplay', true);
     }
+
+    // Control de pasos de memoria por admin
+    const rawContent = message.content.toLowerCase();
+    if (/no (muestres|pongas|enseñes|saques|hagas) (los )?pasos|oculta (los )?pasos|sin pasos|pasos (de memoria )?desactivados?|quita (los )?pasos/i.test(rawContent)) {
+      await setFlag(guildId, 'verboseMemorySteps', false);
+    } else if (/(muestra|pon|enseña|activa|regresa|vuelve con) (los )?pasos|pasos (de memoria )?activados?|con pasos/i.test(rawContent)) {
+      await setFlag(guildId, 'verboseMemorySteps', true);
+    }
   }
 
   const flags = getFlags(guildId);
@@ -861,9 +900,12 @@ client.on('messageCreate', async (message) => {
       const extraThinkingDelay = computeExtraThinkingDelay({ baseMs: 1600, hasWebContext: false, intent: 'chat', memoryIntent: { isExplicit: true }, contentLength: finalContent.length });
       if (extraThinkingDelay > 1600) await sleep(extraThinkingDelay);
 
+      // Detectar si el usuario pidió ver los pasos explícitamente
+      const askedForSteps = /muéstrame|muestrame|enseñame|enséñame|los pasos|con pasos|paso a paso|detallado|explicame|explícame/i.test(finalContent);
+
       await Promise.all([
         saveUserMemory(message.author.id, guildId, userConfig.mode, memory, channelId),
-        runExplicitMemoryUi(message, finalContent, 'save', details, thinkingState),
+        runExplicitMemoryUi(message, finalContent, 'save', details, thinkingState, flags.verboseMemorySteps, askedForSteps),
       ]);
     } else if (memoryIntent.isRecall && userConfig.mode !== 'off') {
       const details = memory.isGlobal ? 'Buscando en memoria global de servidores y canales' : 'Buscando en memoria local de este servidor';
@@ -871,7 +913,10 @@ client.on('messageCreate', async (message) => {
       const extraThinkingDelay = computeExtraThinkingDelay({ baseMs: 1600, hasWebContext: false, intent: 'chat', memoryIntent: { isExplicit: true }, contentLength: finalContent.length });
       if (extraThinkingDelay > 1600) await sleep(extraThinkingDelay);
 
-      await runExplicitMemoryUi(message, finalContent, 'recall', details, thinkingState);
+      // Detectar si el usuario pidió ver los pasos explícitamente
+      const askedForSteps = /muéstrame|muestrame|enseñame|enséñame|los pasos|con pasos|paso a paso|detallado|explicame|explícame/i.test(finalContent);
+
+      await runExplicitMemoryUi(message, finalContent, 'recall', details, thinkingState, flags.verboseMemorySteps, askedForSteps);
     }
 
     // 2. Contexto y mood
